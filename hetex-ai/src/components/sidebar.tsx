@@ -171,7 +171,7 @@ export function Sidebar() {
     setMenuFor(null);
     try {
       await apiFetch(`/conversations/${id}`, { method: "DELETE" });
-      if (pathname === `/chat/${id}`) router.push("/");
+      if (pathname === `/chat/${id}`) router.push("/chat");
     } catch {
       setConversations(previous);
     }
@@ -271,12 +271,12 @@ export function Sidebar() {
         {!collapsed && (
           // The lockup already contains the wordmark, so the adjacent "Hetex AI"
           // text it replaces would have been a duplicate.
-          <Link href="/" aria-label="Hetex AI — new chat">
+          <Link href="/chat" aria-label="Hetex AI — new chat">
             <HetexLockup height={28} priority />
           </Link>
         )}
         {collapsed && (
-          <Link href="/" className="mx-auto" aria-label="Hetex AI — new chat">
+          <Link href="/chat" className="mx-auto" aria-label="Hetex AI — new chat">
             <HetexIcon size={28} priority />
           </Link>
         )}
@@ -299,7 +299,7 @@ export function Sidebar() {
 
       <div className="px-3">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/chat")}
           className="bg-accent-gradient flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90"
           title="New chat"
         >

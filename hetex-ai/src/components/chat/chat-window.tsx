@@ -331,7 +331,7 @@ export function ChatWindow({
     }
 
     setMessages([]);
-    router.push("/");
+    router.push("/chat");
     router.refresh();
   }
 

@@ -30,8 +30,22 @@ export function isAdminEmail(email: string): boolean {
 
 export const OWNER_SUBJECT = "__owner__";
 
+/**
+ * The email the owner login accepts.
+ *
+ * ADMIN_EMAIL if set, otherwise the first entry in ADMIN_EMAILS. The two names
+ * differ by one letter, which is a mistake in naming that cost real time —
+ * falling back means whichever one is set works, rather than failing silently
+ * because the wrong one was filled in.
+ */
+function ownerEmail(): string | undefined {
+  if (env.ADMIN_EMAIL?.trim()) return env.ADMIN_EMAIL.trim();
+  const [first] = env.ADMIN_EMAILS.split(",").map((e) => e.trim()).filter(Boolean);
+  return first;
+}
+
 export function ownerLoginConfigured(): boolean {
-  return Boolean(env.ADMIN_EMAIL && env.ADMIN_PASSWORD);
+  return Boolean(ownerEmail() && env.ADMIN_PASSWORD);
 }
 
 /** Constant-time compare, so a wrong guess can't be timed character by character. */
@@ -43,15 +57,16 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export function checkOwnerLogin(email: string, password: string): boolean {
-  if (!ownerLoginConfigured()) return false;
+  const expected = ownerEmail();
+  if (!expected || !env.ADMIN_PASSWORD) return false;
   return (
-    safeEqual(email.trim().toLowerCase(), env.ADMIN_EMAIL!.trim().toLowerCase()) &&
-    safeEqual(password, env.ADMIN_PASSWORD!)
+    safeEqual(email.trim().toLowerCase(), expected.toLowerCase()) &&
+    safeEqual(password, env.ADMIN_PASSWORD)
   );
 }
 
 export function issueOwnerToken(): string {
-  return signToken({ sub: OWNER_SUBJECT, email: env.ADMIN_EMAIL!, adm: true });
+  return signToken({ sub: OWNER_SUBJECT, email: ownerEmail()!, adm: true });
 }
 
 /**

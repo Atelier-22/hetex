@@ -24,7 +24,7 @@ export const adminRouter = Router();
 adminRouter.get("/config-status", (_req, res) => {
   res.json({
     ownerLoginConfigured: ownerLoginConfigured(),
-    adminEmailLength: env.ADMIN_EMAIL?.length ?? 0,
+    adminEmailLength: (env.ADMIN_EMAIL || env.ADMIN_EMAILS.split(",")[0] || "").trim().length,
     adminPasswordLength: env.ADMIN_PASSWORD?.length ?? 0,
     // Surfaces the classic cause: a value pasted with a trailing space or
     // wrapped in quotes, which is invisible in a dashboard text field.

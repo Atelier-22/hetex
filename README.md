@@ -2,40 +2,57 @@
 
 Built in Uganda. Designed for the world.
 
-A monorepo containing the Hetex AI platform:
+Hetex AI is a general-purpose AI platform — chat with Claude, organised into
+projects, with conversation history, per-user preferences, and a memory the
+assistant can draw on. It runs on the web and on phones, off one backend.
 
-| Folder | What it is | Stack |
+## The three pieces
+
+| Folder | What it is | Runs on |
 | --- | --- | --- |
-| [`hetex-ai/`](hetex-ai/) | Web app + API (the backend for everything) | Next.js 14, NextAuth, Drizzle ORM, Anthropic Claude |
-| [`hetex-mobile/`](hetex-mobile/) | Mobile app | React Native + Expo |
+| [`hetex-api/`](hetex-api/) | Express + PostgreSQL API. Owns the database, auth, and every call to Claude | Render |
+| [`hetex-ai/`](hetex-ai/) | Next.js web frontend | Vercel |
+| [`hetex-mobile/`](hetex-mobile/) | React Native + Expo app | Expo / EAS |
 
-The mobile app is a real native client that talks to `hetex-ai`'s API routes and
-shares its database — it is not a webview wrapper. The two ship together, which
-is why they live in one repo.
+```
+  Browser  ──┐
+             ├──►  hetex-api (Render)  ──►  PostgreSQL
+  Phone    ──┘            │
+                          └──────────────►  Claude (Anthropic)
+```
+
+Both clients call the same endpoints and share the same database, so an account
+made on the web works on the phone and the conversations are the same ones. The
+API key never leaves the backend — neither client holds a secret.
 
 ## Getting started
 
-Each project has its own README with setup instructions:
-
-- [hetex-ai/README.md](hetex-ai/README.md) — start here, the mobile app needs this running
-- [hetex-mobile/README.md](hetex-mobile/README.md)
-
-Quick version:
-
 ```bash
+# Backend — start this first, the clients need it
+cd hetex-api
+npm install
+cp .env.example .env      # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
+npm run dev               # http://localhost:4000
+
+# Web frontend
 cd hetex-ai
 npm install
-cp .env.example .env   # then fill in NEXTAUTH_SECRET and ANTHROPIC_API_KEY
-npm run db:push
-npm run dev
+cp .env.example .env.local  # set NEXTAUTH_SECRET
+npm run dev                 # http://localhost:3000
 ```
+
+Each project has its own README with the detail:
+[hetex-api](hetex-api/README.md) · [hetex-ai](hetex-ai/README.md) ·
+[hetex-mobile](hetex-mobile/README.md)
+
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) — Render for the API and database, Vercel for
+the frontend, EAS for the mobile build. It also lists the known gaps honestly:
+what is wired but not yet finished.
 
 ## Environment variables
 
 Never commit `.env`. Only `.env.example` belongs in the repo — it documents
-which variables exist without exposing values. Real values go in your host's
-environment variable panel (Vercel / Render) for deployed environments.
-
-## Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md).
+which variables exist without exposing values. Real values go in the Render,
+Vercel, and EAS dashboards.

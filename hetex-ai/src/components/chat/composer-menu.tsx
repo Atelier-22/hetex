@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Plus, Paperclip, FolderKanban, Globe, Check } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 type Project = { id: string; name: string };
 
@@ -39,8 +40,7 @@ export function ComposerMenu({
 
   useEffect(() => {
     if (showProjects) {
-      fetch("/api/projects")
-        .then((r) => r.json())
+      apiFetch<Project[]>("/projects")
         .then(setProjects)
         .catch(() => setProjects([]));
     }

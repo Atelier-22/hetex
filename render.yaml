@@ -1,0 +1,44 @@
+# Render blueprint — provisions the Hetex API service and its Postgres database.
+#
+# To use: Render Dashboard -> New -> Blueprint -> pick this repo. Render reads
+# this file, creates both resources, and wires DATABASE_URL between them.
+# ANTHROPIC_API_KEY is marked sync:false, so Render prompts you for it rather
+# than expecting it to live in the repo.
+
+services:
+  - type: web
+    name: hetex-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: hetex-api
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hetex-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      # Set these two in the Render dashboard after the first deploy:
+      #   ANTHROPIC_API_KEY — your key from console.anthropic.com
+      #   CORS_ORIGINS      — your Vercel URL, e.g. https://hetex.vercel.app
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+databases:
+  - name: hetex-db
+    plan: free
+    region: oregon
+    databaseName: hetex
+    user: hetex

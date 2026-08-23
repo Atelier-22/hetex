@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FolderKanban, Plus } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 type Project = { id: string; name: string; _count: { conversations: number } };
 
@@ -9,25 +10,34 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function load() {
-    fetch("/api/projects")
-      .then((r) => r.json())
-      .then(setProjects);
+    apiFetch<Project[]>("/projects")
+      .then(setProjects)
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Could not load projects")
+      );
   }
 
   useEffect(load, []);
 
   async function createProject() {
     if (!name.trim()) return;
-    await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    setName("");
-    setCreating(false);
-    load();
+    setError(null);
+    try {
+      await apiFetch("/projects", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      setName("");
+      setCreating(false);
+      load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not create the project"
+      );
+    }
   }
 
   return (
@@ -42,6 +52,12 @@ export default function ProjectsPage() {
             <Plus size={15} /> New project
           </button>
         </div>
+
+        {error && (
+          <p className="mt-4 rounded-lg border border-hetex-red-500/30 bg-hetex-red-500/10 px-3 py-2 text-sm text-hetex-red-500">
+            {error}
+          </p>
+        )}
 
         {creating && (
           <div className="mt-4 flex gap-2">

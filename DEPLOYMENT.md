@@ -1,137 +1,209 @@
 # Deployment
 
-## The shape of this app (read this first)
+Three pieces, three places:
 
-`hetex-ai` is a **Next.js app**, which means the frontend and the backend are
-the same deployable. The API lives in `hetex-ai/src/app/api/**/route.ts` and is
-compiled and served by the same process that serves the pages. There is no
-separate backend server to put on one host and a frontend to put on another —
-splitting them would mean extracting the API routes into a standalone Node
-service first, which is a rewrite, not a config change.
-
-So the plan that uses both Vercel and Render as intended is:
-
-| Service | Hosts | Why |
+| Piece | Goes to | What it is |
 | --- | --- | --- |
-| **Vercel** | The `hetex-ai` Next.js app (pages **and** API routes) | Vercel is built by the Next.js team; zero-config builds, preview deploys per branch |
-| **Render** | The PostgreSQL database | Vercel is serverless — no persistent disk, so the current SQLite file cannot live there. Render gives you a managed Postgres instance |
-| **Expo / EAS** | The `hetex-mobile` app | Mobile apps ship through app stores, not web hosts. It just points at the Vercel URL |
+| [`hetex-api/`](hetex-api/) | **Render** — web service + Postgres | Express API. Owns the database, auth, and every call to Claude |
+| [`hetex-ai/`](hetex-ai/) | **Vercel** | Next.js frontend. No database, no API keys — it calls the Render API |
+| [`hetex-mobile/`](hetex-mobile/) | Expo / EAS | React Native app. Calls the same Render API |
 
-If you would rather have one host for everything, deploy the whole Next.js app
-to Render as a Node web service instead and skip Vercel. That works too — it is
-just a less optimised path for Next.js.
-
----
-
-## Blockers to clear before the first deploy
-
-These are real code changes, not settings. Nothing deploys correctly until they
-are done.
-
-### 1. SQLite → Postgres
-
-Today the database is libSQL/SQLite (`hetex-ai/src/lib/db/index.ts`) writing to
-a local `dev.db` file. On Vercel there is no writable persistent filesystem, so
-every deploy would start from an empty database and lose it again on the next
-request.
-
-What changes:
-
-- `hetex-ai/src/lib/db/index.ts` — swap `@libsql/client` + `drizzle-orm/libsql`
-  for `pg` + `drizzle-orm/node-postgres`
-- `hetex-ai/src/lib/db/schema.ts` — swap `sqliteTable`/`integer(... mode:
-  "timestamp")` for `pgTable`/`timestamp`. The table shapes and relations stay
-  identical; only the column type helpers differ
-- `hetex-ai/drizzle.config.ts` — `dialect: "sqlite"` becomes `dialect:
-  "postgresql"`
-
-An alternative that avoids this work entirely: use **Turso** (hosted libSQL)
-instead of Render Postgres. The driver already matches, so it is only a
-`DATABASE_URL` change — but then Render is not part of the stack.
-
-### 2. The mobile app's API endpoints do not exist
-
-`hetex-mobile/src/api/client.ts` calls:
-
-- `POST /api/mobile/auth/register`
-- `POST /api/mobile/auth/login`
-- `GET  /api/mobile/auth/me`
-- `POST /api/mobile/chat`
-
-None of these exist in `hetex-ai/src/app/api/`. The web app uses NextAuth
-cookie sessions; the mobile app expects bearer-token JSON endpoints. Those
-routes need to be written before the mobile app can talk to anything, deployed
-or local.
-
-### 3. The mobile app's base URL is hardcoded to a LAN IP
-
-`hetex-mobile/src/api/client.ts` line 5 pins `http://10.180.201.18:3000`. That
-address only exists on your home Wi-Fi. It needs to read from Expo config
-(`app.json` → `extra`, or `EXPO_PUBLIC_API_URL`) so it can point at the
-deployed URL.
+The frontend holds no secrets and talks to nothing but the API. The API is the
+only thing that touches Postgres or the Anthropic key.
 
 ---
 
-## Render — PostgreSQL
+## Order matters
 
-1. Sign in at [render.com](https://render.com) → **New** → **Postgres**
-2. Name it `hetex-db`, pick the region closest to your users, choose the free
-   tier to start
-3. Once it provisions, copy the **External Database URL** (starts with
-   `postgresql://`) — external, not internal, because Vercel connects from
-   outside Render's network
-4. Keep that URL somewhere safe; it is a secret and goes in Vercel's
-   environment variables, never in the repo
+Deploy the **backend first**. The frontend needs the API's URL as a build-time
+variable, and the API needs the frontend's URL for CORS — so there is one
+chicken-and-egg step, handled in step 3 below.
 
-> Render's free Postgres tier expires after 30 days. For anything you intend to
-> keep, budget for the paid tier.
+---
 
-## Vercel — the Next.js app
+## 1. Render — API + database
 
-1. Sign in at [vercel.com](https://vercel.com) with GitHub → **Add New** →
-   **Project** → import the `hetex` repo
-2. **Root Directory: `hetex-ai`** — this is the important one. The repo root is
-   a monorepo; Vercel needs to be told which folder holds the Next.js app.
-   Framework preset and build command auto-detect once it is set
-3. Add environment variables (Settings → Environment Variables):
+The repo has a [`render.yaml`](render.yaml) blueprint, so Render can create
+both resources itself.
+
+1. [render.com](https://render.com) → **New** → **Blueprint**
+2. Connect the `hetex` repo. Render reads `render.yaml` and shows a web service
+   (`hetex-api`) plus a Postgres database (`hetex-db`)
+3. It will prompt for the two values marked `sync: false`:
+
+   | Variable | Value |
+   | --- | --- |
+   | `ANTHROPIC_API_KEY` | your key from [console.anthropic.com](https://console.anthropic.com/) |
+   | `CORS_ORIGINS` | leave as `http://localhost:3000` for now — corrected in step 3 |
+
+   `DATABASE_URL` is wired to the database automatically and `JWT_SECRET` is
+   generated by Render. You do not set either by hand.
+
+4. Click apply. First build takes a few minutes.
+
+**No manual database setup is needed.** The service applies its own migrations
+at boot from [`hetex-api/drizzle/`](hetex-api/drizzle/) — a fresh database
+provisions itself on first start. If migrations fail the process exits rather
+than serving requests against a half-built schema, so a red deploy means read
+the logs, don't retry blindly.
+
+When it goes green, check it:
+
+```bash
+curl https://hetex-api.onrender.com/health
+# {"status":"ok","aiProvider":"configured"}
+```
+
+If `aiProvider` says `not_configured`, the Anthropic key didn't take — chat
+will return a 503 with that same explanation rather than a fake reply.
+
+> **Free tier, two catches.** Render's free web services sleep after 15 minutes
+> idle, so the first request after a quiet spell takes ~30 seconds to wake. And
+> free Postgres is deleted after 30 days. Both are fine for testing; neither is
+> fine for real users.
+
+Copy the service URL — something like `https://hetex-api.onrender.com`.
+
+## 2. Vercel — frontend
+
+1. [vercel.com](https://vercel.com) → **Add New** → **Project** → import `hetex`
+2. **Root Directory: `hetex-ai`** — this is the one setting that matters. It's a
+   monorepo; Vercel has to be told which folder holds the Next.js app
+3. Environment variables:
 
    | Name | Value |
    | --- | --- |
-   | `DATABASE_URL` | the Render External Database URL |
-   | `NEXTAUTH_SECRET` | generate with `openssl rand -base64 32` |
-   | `NEXTAUTH_URL` | your production URL, e.g. `https://hetex.vercel.app` |
-   | `ANTHROPIC_API_KEY` | your key from console.anthropic.com |
+   | `NEXT_PUBLIC_API_URL` | your Render URL, no trailing slash |
+   | `NEXTAUTH_SECRET` | generate: `openssl rand -base64 32` |
+   | `NEXTAUTH_URL` | your Vercel URL, e.g. `https://hetex.vercel.app` |
 
-4. Deploy. On the first successful build, run the schema push against the
-   Render database from your machine:
+   `NEXT_PUBLIC_API_URL` is compiled into the browser bundle, so it must be set
+   **before** the build. Changing it later requires a redeploy, not just a
+   restart.
 
-   ```bash
-   cd hetex-ai
-   DATABASE_URL="<render-external-url>" npm run db:push
-   ```
+   `NEXTAUTH_SECRET` is unrelated to the backend's `JWT_SECRET` — one encrypts
+   the browser's session cookie, the other signs API tokens. They are different
+   values with different jobs.
 
-5. `NEXTAUTH_URL` must match the final domain exactly. If you attach a custom
-   domain later, update it or login will break.
+4. Deploy.
 
-## Expo — the mobile app
+## 3. Close the loop
 
-Once the web app has a public URL, point the mobile app at it (blocker 3 above),
-then build with EAS:
+Back in Render → `hetex-api` → **Environment**, set `CORS_ORIGINS` to your real
+Vercel URL:
+
+```
+CORS_ORIGINS=https://hetex.vercel.app
+```
+
+Save; Render restarts the service. Preview deployments on `*.vercel.app` are
+allowed automatically, so branch previews work without touching this again.
+
+Then register an account on your Vercel URL and send a message. That exercises
+the whole chain: browser → Vercel → Render → Postgres → Claude and back.
+
+## 4. Expo — mobile
+
+Point the app at the same API and build:
 
 ```bash
 cd hetex-mobile
-npx eas build --platform android --profile preview
+EXPO_PUBLIC_API_URL=https://hetex-api.onrender.com npx expo start
 ```
 
-Expo Go remains fine for testing against the deployed backend — the LAN
-requirement in `hetex-mobile/README.md` only applies when the backend runs on
-your laptop.
+For a real installable build, set `EXPO_PUBLIC_API_URL` in your EAS build
+profile and run `npx eas build --platform android --profile preview`.
+
+Testing against the deployed backend removes the same-Wi-Fi requirement in
+[hetex-mobile/README.md](hetex-mobile/README.md) — that only applies when the
+API runs on your laptop.
+
+---
+
+## Local development
+
+Three terminals, or two if you skip mobile.
+
+```bash
+# 1. Postgres — create the database once
+createdb hetex
+
+# 2. Backend
+cd hetex-api
+npm install
+cp .env.example .env       # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
+npm run dev                # http://localhost:4000, migrates on boot
+
+# 3. Frontend
+cd hetex-ai
+npm install
+cp .env.example .env.local # set NEXTAUTH_SECRET
+npm run dev                # http://localhost:3000
+```
+
+`JWT_SECRET` must be at least 32 characters or the API refuses to start — an
+intentional guard, since a short signing secret is a real vulnerability rather
+than a style preference.
+
+---
+
+## Environment variables in one place
+
+**hetex-api (Render)**
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | Wired by `render.yaml` |
+| `JWT_SECRET` | yes | ≥32 chars; generated by Render |
+| `ANTHROPIC_API_KEY` | for chat | Without it `/chat` returns 503 |
+| `CORS_ORIGINS` | yes | Comma-separated; your Vercel URL |
+| `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-4-6` |
+| `JWT_EXPIRES_IN` | no | Defaults to `30d` |
+| `PORT` | no | Render sets this |
+
+**hetex-ai (Vercel)**
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | yes | Build-time; browser-visible |
+| `NEXTAUTH_SECRET` | yes | Encrypts the session cookie |
+| `NEXTAUTH_URL` | yes | Must match the deployed URL exactly |
+
+**hetex-mobile (Expo/EAS)**
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `EXPO_PUBLIC_API_URL` | yes in production | Falls back to `expo.extra.apiUrl` in `app.json` |
 
 ---
 
 ## Secrets
 
-`.env` is gitignored at the repo root and must stay that way — this repository
-is public. Real values belong only in the Vercel and Render dashboards. If a key
-ever lands in a commit, rotate it at the provider; deleting the commit is not
-enough, because the value is already published.
+This repository is public. `.env` is gitignored at the root and must stay that
+way — real values belong only in the Render, Vercel, and EAS dashboards. If a
+key ever lands in a commit, rotate it at the provider; deleting the commit is
+not enough, because the value is already published.
+
+The frontend deliberately holds no API key. Anything prefixed `NEXT_PUBLIC_` is
+readable by anyone who opens devtools, which is exactly why the Anthropic key
+lives on the backend and never leaves it.
+
+---
+
+## Known gaps
+
+Honest list of what is wired but not finished:
+
+- **Web search** — the toggle exists and the plumbing is real, but no search
+  provider is connected. Turning it on tells Claude to answer from training
+  knowledge and say so, rather than inventing sources.
+- **Document attachments** — images are analysed; PDFs and text files are
+  stored and named but their contents aren't read yet. The chat says so
+  explicitly instead of pretending otherwise.
+- **Attachment storage** — neither Render nor Vercel has a persistent disk, so
+  images are kept in Postgres as data URLs, capped at 1.5 MB. That is fine for
+  modest use and wrong at scale; object storage (S3/R2) is the real fix.
+- **Password changes and account deletion** — not implemented; the Settings
+  page says so.
+- **Mobile** — login, register, and chat only. No streaming (the phone gets the
+  whole reply at once), no history list wired to the UI yet.

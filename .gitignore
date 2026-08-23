@@ -36,6 +36,7 @@ expo-env.d.ts
 uploads/
 
 # --- Build / tooling output ---
+dist/
 *.tsbuildinfo
 .deep-copilot/
 .vercel/

@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { apiFetch } from "@/lib/api-client";
 
 type Settings = {
   assistantName: string;
@@ -31,9 +32,10 @@ export default function SettingsPage() {
     plan: "Free",
   });
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
+    apiFetch<Settings>("/settings")
       .then((data) =>
         setSettings({
           assistantName: data.assistantName,
@@ -41,46 +43,57 @@ export default function SettingsPage() {
           memoryEnabled: Boolean(data.memoryEnabled),
           enterToSend: data.enterToSend ?? true,
         })
+      )
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Could not load settings")
       );
-    fetch("/api/memory")
-      .then((r) => r.json())
-      .then(setMemories);
-    fetch("/api/usage")
-      .then((r) => r.json())
-      .then(setUsage);
+    apiFetch<MemoryEntry[]>("/memory").then(setMemories).catch(() => {});
+    apiFetch<{ totals: Record<string, number>; plan: string }>("/usage")
+      .then(setUsage)
+      .catch(() => {});
   }, []);
 
   async function save(patch: Partial<Settings> = {}) {
+    const previous = settings;
     const next = { ...settings, ...patch };
     setSettings(next);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(next),
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    setError(null);
+    try {
+      await apiFetch("/settings", {
+        method: "PATCH",
+        body: JSON.stringify(next),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (err) {
+      // Roll the toggle back so the screen doesn't claim a setting is on when
+      // the server never accepted it.
+      setSettings(previous);
+      setError(err instanceof Error ? err.message : "Could not save settings");
+    }
   }
 
   async function addMemory() {
     if (!newMemory.trim()) return;
-    const res = await fetch("/api/memory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: newMemory }),
-    });
-    const entry = await res.json();
-    setMemories((prev) => [entry, ...prev]);
-    setNewMemory("");
+    try {
+      const entry = await apiFetch<MemoryEntry>("/memory", {
+        method: "POST",
+        body: JSON.stringify({ content: newMemory }),
+      });
+      setMemories((prev) => [entry, ...prev]);
+      setNewMemory("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save that memory");
+    }
   }
 
   async function deleteMemory(id: string) {
-    await fetch("/api/memory", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setMemories((prev) => prev.filter((m) => m.id !== id));
+    try {
+      await apiFetch(`/memory/${id}`, { method: "DELETE" });
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete that memory");
+    }
   }
 
   return (
@@ -243,7 +256,13 @@ export default function SettingsPage() {
           </Link>
         </Card>
 
-        {saved && (
+        {error && (
+          <p className="mt-6 rounded-lg border border-hetex-red-500/30 bg-hetex-red-500/10 px-3 py-2 text-center text-sm text-hetex-red-500">
+            {error}
+          </p>
+        )}
+
+        {saved && !error && (
           <p className="mt-6 text-center text-xs text-hetex-green-600 dark:text-hetex-green-400">
             Saved
           </p>

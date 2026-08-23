@@ -11,6 +11,7 @@ import {
   Volume2,
   Square,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 type Feedback = "up" | "down" | null;
 
@@ -56,9 +57,8 @@ export function MessageActions({
     setFeedback(next);
     if (!next || !messageId) return;
     try {
-      await fetch("/api/feedback", {
+      await apiFetch("/feedback", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, conversationId, rating: next }),
       });
     } catch {

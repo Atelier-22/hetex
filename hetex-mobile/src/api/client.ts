@@ -1,8 +1,26 @@
-
-
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
-export const API_BASE_URL = "http://10.180.201.18:3000";
+/**
+ * Base URL of the Hetex API.
+ *
+ * Resolution order:
+ *   1. EXPO_PUBLIC_API_URL           — set in .env or the EAS build profile
+ *   2. app.json -> expo.extra.apiUrl — committed default
+ *   3. localhost                     — last resort, only useful on a simulator
+ *
+ * A phone cannot reach "localhost" — that means the phone itself. When running
+ * the backend on your own machine, set EXPO_PUBLIC_API_URL to your computer's
+ * LAN address (e.g. http://192.168.1.42:4000). Once the backend is deployed,
+ * point it at the Render URL and the LAN requirement disappears entirely.
+ */
+const extra = (Constants.expoConfig?.extra ?? {}) as { apiUrl?: string };
+
+export const API_BASE_URL = (
+  process.env.EXPO_PUBLIC_API_URL ??
+  extra.apiUrl ??
+  "http://localhost:4000"
+).replace(/\/$/, "");
 
 const TOKEN_KEY = "hetex_mobile_token";
 
@@ -24,19 +42,30 @@ async function request<T>(
 ): Promise<T> {
   const token = await getToken();
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    // fetch only rejects on a transport failure, and its message ("Network
+    // request failed") tells the user nothing actionable.
+    throw new Error(
+      `Couldn't reach the Hetex server at ${API_BASE_URL}. Check your connection and that the API is running.`
+    );
+  }
 
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({} as Record<string, unknown>));
 
   if (!res.ok) {
-    throw new Error(data.error ?? `Request failed (${res.status})`);
+    throw new Error(
+      (data as { error?: string }).error ?? `Request failed (${res.status})`
+    );
   }
 
   return data as T;
@@ -47,27 +76,40 @@ export interface AuthResponse {
   user: { id: string; email: string; displayName: string | null; role: string };
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
 export const api = {
   register: (email: string, password: string, displayName?: string) =>
-    request<AuthResponse>("/api/mobile/auth/register", {
+    request<AuthResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, displayName }),
     }),
 
   login: (email: string, password: string) =>
-    request<AuthResponse>("/api/mobile/auth/login", {
+    request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
 
   me: () =>
-    request<{ id: string; email: string; displayName: string | null; role: string }>(
-      "/api/mobile/auth/me"
-    ),
+    request<{
+      id: string;
+      email: string;
+      displayName: string | null;
+      role: string;
+    }>("/auth/me"),
 
+  // The backend streams only when the request asks for text/event-stream.
+  // This client doesn't, so it gets the complete reply as one JSON object.
   sendMessage: (message: string, conversationId?: string) =>
-    request<{ conversationId: string; title: string; reply: string }>("/api/mobile/chat", {
+    request<{ conversationId: string; title: string; reply: string }>("/chat", {
       method: "POST",
       body: JSON.stringify({ message, conversationId }),
     }),
+
+  conversations: () => request<ConversationSummary[]>("/conversations"),
 };

@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
+import { apiFetch } from "@/lib/api-client";
 
 type ConversationSummary = { id: string; title: string };
 
@@ -35,8 +36,7 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!session) return;
-    fetch("/api/conversations")
-      .then((r) => (r.ok ? r.json() : []))
+    apiFetch<ConversationSummary[]>("/conversations")
       .then(setConversations)
       .catch(() => setConversations([]));
   }, [session, pathname]);

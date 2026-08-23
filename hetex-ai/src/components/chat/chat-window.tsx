@@ -2,8 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Square, Sparkles, Mic, MicOff, Trash2, RotateCcw } from "lucide-react";
+import {
+  Send,
+  Square,
+  Sparkles,
+  Mic,
+  MicOff,
+  Trash2,
+  RotateCcw,
+  X,
+  Globe,
+  FileText,
+} from "lucide-react";
 import { MessageBubble } from "./message-bubble";
+import { ComposerMenu } from "./composer-menu";
+import { apiFetch, apiStream } from "@/lib/api-client";
 
 type Message = {
   id: string;
@@ -11,6 +24,15 @@ type Message = {
   content: string;
   createdAt?: Date | string;
 };
+
+type PendingFile = {
+  name: string;
+  mediaType: string;
+  base64: string;
+  previewUrl?: string;
+};
+
+type Project = { id: string; name: string };
 
 export function ChatWindow({
   conversationId,
@@ -28,6 +50,9 @@ export function ChatWindow({
   const [isListening, setIsListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
   const [enterToSend, setEnterToSend] = useState(true);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -39,20 +64,21 @@ export function ChatWindow({
   useEffect(() => {
     const SpeechRecognition =
       typeof window !== "undefined" &&
-      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+      ((window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition);
     setMicSupported(Boolean(SpeechRecognition));
   }, []);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
+    apiFetch<{ enterToSend?: boolean }>("/settings")
       .then((data) => setEnterToSend(data.enterToSend ?? true))
       .catch(() => {});
   }, []);
 
   function toggleListening() {
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     if (isListening) {
@@ -78,23 +104,57 @@ export function ChatWindow({
     setIsListening(true);
   }
 
-  async function streamReply(text: string, assistantId: string) {
+  function handleFilesSelected(fileList: FileList) {
+    Array.from(fileList).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1] ?? "";
+        setPendingFiles((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            mediaType: file.type || "application/octet-stream",
+            base64,
+            previewUrl: file.type.startsWith("image/") ? result : undefined,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function removeFile(name: string) {
+    setPendingFiles((prev) => prev.filter((f) => f.name !== name));
+  }
+
+  async function streamReply(
+    text: string,
+    assistantId: string,
+    files: PendingFile[] = [],
+    useWebSearch = false
+  ) {
     setIsStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, conversationId }),
-        signal: controller.signal,
-      });
+      const res = await apiStream(
+        "/chat",
+        {
+          message: text,
+          conversationId,
+          projectId: !conversationId ? selectedProject?.id : undefined,
+          attachments: files.map((f) => ({
+            name: f.name,
+            mediaType: f.mediaType,
+            base64: f.base64,
+          })),
+          webSearchEnabled: useWebSearch,
+        },
+        controller.signal
+      );
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? `Request failed (${res.status})`);
-      }
       if (!res.body) throw new Error("No response stream from server");
 
       const reader = res.body.getReader();
@@ -123,7 +183,9 @@ export function ChatWindow({
           } else if (eventType === "chunk") {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === assistantId ? { ...m, content: m.content + data.text } : m
+                m.id === assistantId
+                  ? { ...m, content: m.content + data.text }
+                  : m
               )
             );
           } else if (eventType === "error") {
@@ -135,6 +197,7 @@ export function ChatWindow({
 
       if (newConversationId) {
         router.push(`/chat/${newConversationId}`);
+        router.refresh();
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -148,16 +211,24 @@ export function ChatWindow({
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    if ((!text && pendingFiles.length === 0) || isStreaming) return;
 
     setError(null);
     setLastFailedMessage(null);
     setInput("");
+    const filesToSend = pendingFiles;
+    setPendingFiles([]);
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content: text,
+      content:
+        text +
+        (filesToSend.length > 0
+          ? `${text ? "\n\n" : ""}[Attached: ${filesToSend
+              .map((f) => f.name)
+              .join(", ")}]`
+          : ""),
       createdAt: new Date(),
     };
     const assistantId = crypto.randomUUID();
@@ -167,7 +238,7 @@ export function ChatWindow({
       { id: assistantId, role: "assistant", content: "", createdAt: new Date() },
     ]);
 
-    await streamReply(text, assistantId);
+    await streamReply(text, assistantId, filesToSend, webSearchEnabled);
   }
 
   async function retryLastMessage() {
@@ -187,11 +258,15 @@ export function ChatWindow({
   async function regenerateResponse(assistantMessageId: string) {
     const idx = messages.findIndex((m) => m.id === assistantMessageId);
     if (idx <= 0) return;
-    const priorUser = [...messages.slice(0, idx)].reverse().find((m) => m.role === "user");
+    const priorUser = [...messages.slice(0, idx)]
+      .reverse()
+      .find((m) => m.role === "user");
     if (!priorUser) return;
 
     setMessages((prev) =>
-      prev.map((m) => (m.id === assistantMessageId ? { ...m, content: "" } : m))
+      prev.map((m) =>
+        m.id === assistantMessageId ? { ...m, content: "" } : m
+      )
     );
     await streamReply(priorUser.content, assistantMessageId);
   }
@@ -201,10 +276,27 @@ export function ChatWindow({
     setIsStreaming(false);
   }
 
-  function clearConversation() {
-    if (!confirm("Clear this conversation? This can't be undone.")) return;
+  async function clearConversation() {
+    if (!confirm("Delete this conversation? This can't be undone.")) return;
+
+    // A conversation that was never sent has no id on the server yet, so there
+    // is nothing to delete — just clear the screen.
+    if (conversationId) {
+      try {
+        await apiFetch(`/conversations/${conversationId}`, {
+          method: "DELETE",
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not delete the conversation"
+        );
+        return;
+      }
+    }
+
     setMessages([]);
     router.push("/");
+    router.refresh();
   }
 
   return (
@@ -218,7 +310,7 @@ export function ChatWindow({
             onClick={clearConversation}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
           >
-            <Trash2 size={13} /> Clear
+            <Trash2 size={13} /> Delete
           </button>
         )}
       </div>
@@ -243,7 +335,9 @@ export function ChatWindow({
               content={m.content}
               timestamp={m.createdAt}
               conversationId={conversationId}
-              isStreaming={isStreaming && m.id === messages[messages.length - 1]?.id}
+              isStreaming={
+                isStreaming && m.id === messages[messages.length - 1]?.id
+              }
               onRetry={
                 m.role === "assistant" ? () => regenerateResponse(m.id) : undefined
               }
@@ -267,52 +361,101 @@ export function ChatWindow({
       </div>
 
       <div className="border-t border-[var(--border-subtle)] px-4 py-4 md:px-8">
-        <div className="mx-auto flex max-w-3xl items-end gap-2">
-          {micSupported && (
-            <button
-              onClick={toggleListening}
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${
-                isListening
-                  ? "border-hetex-red-500 text-hetex-red-500"
-                  : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
-              }`}
-              aria-label={isListening ? "Stop listening" : "Voice input"}
-              title={isListening ? "Listening… click to stop" : "Speak your message"}
-            >
-              {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
+        <div className="mx-auto max-w-3xl">
+          {(pendingFiles.length > 0 || webSearchEnabled || selectedProject) && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              {selectedProject && (
+                <span className="flex items-center gap-1 rounded-full bg-hetex-green-100 px-2.5 py-1 text-xs text-hetex-green-800 dark:bg-white/10 dark:text-white">
+                  in {selectedProject.name}
+                </span>
+              )}
+              {webSearchEnabled && (
+                <span className="flex items-center gap-1 rounded-full bg-hetex-blue-100 px-2.5 py-1 text-xs text-hetex-blue-800 dark:bg-white/10 dark:text-white">
+                  <Globe size={11} /> Web search on
+                </span>
+              )}
+              {pendingFiles.map((f) => (
+                <span
+                  key={f.name}
+                  className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] py-1 pl-1 pr-2 text-xs"
+                >
+                  {f.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={f.previewUrl}
+                      alt=""
+                      className="h-5 w-5 rounded-full object-cover"
+                    />
+                  ) : (
+                    <FileText size={13} className="text-[var(--text-secondary)]" />
+                  )}
+                  <span className="max-w-[120px] truncate">{f.name}</span>
+                  <button
+                    onClick={() => removeFile(f.name)}
+                    aria-label="Remove attachment"
+                  >
+                    <X size={12} className="text-[var(--text-secondary)]" />
+                  </button>
+                </span>
+              ))}
+            </div>
           )}
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (enterToSend && e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Message Hetex AI..."
-            rows={1}
-            className="flex-1 resize-none rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-hetex-green-500"
-          />
-          {isStreaming ? (
-            <button
-              onClick={stopGeneration}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)]"
-              aria-label="Stop generating"
-            >
-              <Square size={16} />
-            </button>
-          ) : (
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim()}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white disabled:opacity-40"
-              aria-label="Send message"
-            >
-              <Send size={16} />
-            </button>
-          )}
+
+          <div className="flex items-end gap-2">
+            <ComposerMenu
+              onFilesSelected={handleFilesSelected}
+              webSearchEnabled={webSearchEnabled}
+              onToggleWebSearch={() => setWebSearchEnabled((v) => !v)}
+              selectedProject={selectedProject}
+              onSelectProject={setSelectedProject}
+              showProjectPicker={!conversationId}
+            />
+            {micSupported && (
+              <button
+                onClick={toggleListening}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${
+                  isListening
+                    ? "border-hetex-red-500 text-hetex-red-500"
+                    : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
+                }`}
+                aria-label={isListening ? "Stop listening" : "Voice input"}
+                title={isListening ? "Listening… click to stop" : "Speak your message"}
+              >
+                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+            )}
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (enterToSend && e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Message Hetex AI..."
+              rows={1}
+              className="flex-1 resize-none rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-hetex-green-500"
+            />
+            {isStreaming ? (
+              <button
+                onClick={stopGeneration}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)]"
+                aria-label="Stop generating"
+              >
+                <Square size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() && pendingFiles.length === 0}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white disabled:opacity-40"
+                aria-label="Send message"
+              >
+                <Send size={16} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

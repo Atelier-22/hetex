@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
+import { SettingsOverlay } from "@/components/settings";
 
 export default async function AppLayout({
   children,
@@ -15,6 +16,7 @@ export default async function AppLayout({
     <div className="flex h-screen w-full">
       <Sidebar />
       <main className="flex-1 overflow-hidden">{children}</main>
+      <SettingsOverlay />
     </div>
   );
 }

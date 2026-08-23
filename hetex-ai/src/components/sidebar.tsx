@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { HetexIcon, HetexLockup } from "./logo";
 import { apiFetch } from "@/lib/api-client";
+import { useSettings } from "./settings/settings-context";
 
 type ConversationSummary = {
   id: string;
@@ -32,10 +33,11 @@ type ConversationSummary = {
   pinned?: boolean;
 };
 
+// Settings is not in this list: it opens a modal rather than navigating, so it
+// renders as a button below.
 const navItems = [
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/library", label: "Library", icon: Library },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const COLLAPSED_KEY = "hetex.sidebar.collapsed";
@@ -44,6 +46,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
+  const { openSettings } = useSettings();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -348,6 +351,17 @@ export function Sidebar() {
             {!collapsed && label}
           </Link>
         ))}
+
+        <button
+          onClick={() => openSettings()}
+          title="Settings"
+          className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          <Settings size={16} />
+          {!collapsed && "Settings"}
+        </button>
       </nav>
 
       {!collapsed && (
@@ -413,18 +427,24 @@ export function Sidebar() {
                 {session?.user?.email}
               </p>
             </div>
-            <Link
-              href="/settings"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
+            <button
+              onClick={() => {
+                setAccountOpen(false);
+                openSettings("account");
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
             >
               <User size={14} /> Profile &amp; account
-            </Link>
-            <Link
-              href="/settings"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
+            </button>
+            <button
+              onClick={() => {
+                setAccountOpen(false);
+                openSettings("general");
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
             >
               <Settings size={14} /> Settings
-            </Link>
+            </button>
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-hetex-red-500 hover:bg-hetex-red-500/10"

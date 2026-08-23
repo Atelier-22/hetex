@@ -22,7 +22,7 @@ import {
   ChevronRight,
   User,
 } from "lucide-react";
-import { HetexLogo } from "./logo";
+import { HetexIcon, HetexLockup } from "./logo";
 import { apiFetch } from "@/lib/api-client";
 
 type ConversationSummary = {
@@ -266,14 +266,15 @@ export function Sidebar() {
     >
       <div className="flex items-center justify-between px-3 py-4">
         {!collapsed && (
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <HetexLogo size={28} />
-            <span>Hetex AI</span>
+          // The lockup already contains the wordmark, so the adjacent "Hetex AI"
+          // text it replaces would have been a duplicate.
+          <Link href="/" aria-label="Hetex AI — new chat">
+            <HetexLockup height={28} priority />
           </Link>
         )}
         {collapsed && (
           <Link href="/" className="mx-auto" aria-label="Hetex AI — new chat">
-            <HetexLogo size={28} />
+            <HetexIcon size={28} priority />
           </Link>
         )}
         <button

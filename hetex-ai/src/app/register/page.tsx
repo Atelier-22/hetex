@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { HetexLogo } from "@/components/logo";
+import { HetexLockup } from "@/components/logo";
 import { API_BASE_URL } from "@/lib/api";
 
 export default function RegisterPage() {
@@ -60,7 +60,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <HetexLogo size={56} priority />
+          <HetexLockup width={200} priority />
           <h1 className="text-xl font-semibold">Create your Hetex AI account</h1>
         </div>
 

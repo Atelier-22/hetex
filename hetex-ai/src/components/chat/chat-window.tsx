@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ComposerMenu } from "./composer-menu";
-import { HetexLogo } from "../logo";
+import { HetexIcon } from "../logo";
 import { usePreferences } from "../preferences";
 import { apiFetch, apiStream } from "@/lib/api-client";
 
@@ -359,7 +359,7 @@ export function ChatWindow({
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 pt-20 text-center text-[var(--text-secondary)]">
-              <HetexLogo size={72} priority />
+              <HetexIcon size={80} priority />
               <p className="text-lg font-medium text-[var(--text-primary)]">
                 What can I help you with?
               </p>

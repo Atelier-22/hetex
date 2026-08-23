@@ -2,8 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // node16 rather than commonjs/node: TypeScript 7 removed the old "node"
+    // (node10) resolution entirely. This pair emits CommonJS — package.json has
+    // no "type": "module" — and is accepted by both TS 5 and TS 7.
+    "module": "node16",
+    "moduleResolution": "node16",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,

@@ -57,6 +57,30 @@ curl https://hetex-api.onrender.com/health
 If `aiProvider` says `not_configured`, the Anthropic key didn't take — chat
 will return a 503 with that same explanation rather than a fake reply.
 
+### Creating the service by hand instead
+
+If the database already exists, the blueprint will collide with it on name — set
+the service up manually instead (**New → Web Service**):
+
+| Field | Value |
+| --- | --- |
+| Root Directory | `hetex-api` |
+| Region | same as the database |
+| Build Command | `npm ci --include=dev && npm run build` |
+| Start Command | `npm start` |
+| Health Check Path | `/health` |
+
+Two failure modes, both with unhelpful error messages:
+
+- **Root Directory left blank** → `ENOENT: no such file or directory, open
+  '/opt/render/project/src/package.json'`. Render is looking at the repo root;
+  this is a monorepo and the service lives in a subfolder.
+- **`--include=dev` omitted** → `error TS5108: Option 'moduleResolution=node10'
+  has been removed`, or `tsc: not found`. Setting `NODE_ENV=production` makes
+  npm skip devDependencies, and TypeScript is a devDependency — so the build
+  runs with no compiler installed and picks up whatever `tsc` it can find, which
+  may be a different major version than the lockfile pins.
+
 > **Free tier, two catches.** Render's free web services sleep after 15 minutes
 > idle, so the first request after a quiet spell takes ~30 seconds to wake. And
 > free Postgres is deleted after 30 days. Both are fine for testing; neither is

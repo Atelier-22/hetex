@@ -86,6 +86,31 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
+/**
+ * Drizzle reports the SQL it was running, which buries the real problem — a
+ * wrong host or bad credentials only appears on `cause`. Node wraps connection
+ * failures in an AggregateError whose own message is empty, so the useful text
+ * (ECONNREFUSED, ENOTFOUND) lives one level further down.
+ */
+function describeCause(cause: unknown): string | null {
+  if (!cause) return null;
+
+  if (cause instanceof AggregateError) {
+    const inner = cause.errors
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .filter(Boolean);
+    if (inner.length > 0) return [...new Set(inner)].join("; ");
+  }
+
+  if (cause instanceof Error) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (cause.message) return code ? `${cause.message} (${code})` : cause.message;
+    if (code) return code;
+  }
+
+  return null;
+}
+
 async function start() {
   try {
     // Applying migrations at boot means a fresh Render deploy provisions its
@@ -100,6 +125,13 @@ async function start() {
       "Failed to apply database migrations:",
       err instanceof Error ? err.message : err
     );
+    const cause = describeCause(err instanceof Error ? err.cause : undefined);
+    if (cause) {
+      console.error("Cause:", cause);
+      console.error(
+        "Check DATABASE_URL — the host, port, credentials, and that the database exists."
+      );
+    }
     process.exit(1);
   }
 

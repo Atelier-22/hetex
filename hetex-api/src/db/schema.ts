@@ -6,7 +6,16 @@
 //   integer(..., { mode: "timestamp" })    -> timestamp(..., { withTimezone: true })
 //   integer(..., { mode: "boolean" })      -> boolean(...)
 
-import { pgTable, text, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  boolean,
+  timestamp,
+  jsonb,
+  uniqueIndex,
+  index,
+} from "drizzle-orm/pg-core";
 import { createId } from "@paralleldrive/cuid2";
 import { relations } from "drizzle-orm";
 
@@ -55,8 +64,99 @@ export const userSettings = pgTable("user_settings", {
   // Browser speech-synthesis voice name for Read Aloud. Null means the
   // browser's default, which is all most people ever need.
   voiceName: text("voice_name"),
+  // Speech-recognition language for dictation. Separate from `language`, which
+  // is interface copy — people often dictate in a different language to the one
+  // they read menus in.
+  voiceInputLang: text("voice_input_lang"),
+
+  // Interface language. "auto" follows the browser. Stored now; no translations
+  // exist yet, so nothing reads this beyond the settings screen itself.
+  language: text("language").notNull().default("auto"),
+
+  // Desktop-only. Meaningless in a browser, stored so a future desktop build
+  // inherits the preference rather than asking again.
+  launchAtLogin: boolean("launch_at_login").notNull().default(false),
+
+  // Per-category delivery channel: "push" | "email" | "push_email" | "off".
+  // jsonb rather than a column per category so adding a category is a code
+  // change, not a migration.
+  notificationPrefs: jsonb("notification_prefs")
+    .$type<Record<string, string>>()
+    .notNull()
+    .default({}),
+
+  // Prepended to the system prompt on every conversation.
+  customInstructions: text("custom_instructions"),
+
+  // When false, conversations are not persisted past the live turn.
+  chatHistoryEnabled: boolean("chat_history_enabled").notNull().default(true),
+  // Opt-in, and honoured by being false: nothing here is used for training.
+  trainingOptIn: boolean("training_opt_in").notNull().default(false),
+
+  exportRequestedAt: timestamp("export_requested_at", { withTimezone: true }),
+  deleteRequestedAt: timestamp("delete_requested_at", { withTimezone: true }),
+
   updatedAt: updatedAt(),
 });
+
+/**
+ * Issued bearer tokens, so "log out of this device" can mean something.
+ *
+ * A JWT is self-contained and normally valid until it expires — there is no
+ * server-side handle to pull. Recording each issued token and checking it on
+ * every authenticated request is what makes revocation real, at the cost of
+ * one indexed lookup per request.
+ */
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    // Every authenticated request filters on these two.
+    userIdx: index("user_sessions_user_idx").on(t.userId),
+    activeIdx: index("user_sessions_active_idx").on(t.userId, t.revokedAt),
+  })
+);
+
+/**
+ * Third-party tools an account has connected.
+ *
+ * Nothing is connected today — no provider is implemented. The table exists so
+ * the Plugins screen reflects real state (everything disconnected) rather than
+ * showing toggles that do nothing, and so connecting one later is a provider
+ * implementation rather than a schema change.
+ */
+export const userIntegrations = pgTable(
+  "user_integrations",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    status: text("status").notNull().default("disconnected"),
+    config: jsonb("config").$type<Record<string, unknown>>(),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    userProvider: uniqueIndex("user_integrations_user_provider_idx").on(
+      t.userId,
+      t.provider
+    ),
+  })
+);
 
 export const projects = pgTable("projects", {
   id: id(),

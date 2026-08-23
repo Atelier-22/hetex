@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { verifyToken } from "./jwt";
+import { validateSession } from "./sessions";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -7,6 +8,7 @@ declare global {
     interface Request {
       userId?: string;
       userEmail?: string;
+      sessionId?: string;
     }
   }
 }
@@ -38,7 +40,24 @@ export const requireAuth: RequestHandler = (
 
   req.userId = payload.sub;
   req.userEmail = payload.email;
-  next();
+  req.sessionId = payload.sid;
+
+  // Tokens issued before sessions existed carry no sid. Rejecting them would
+  // log everyone out on deploy; they simply cannot be revoked until they expire.
+  if (!payload.sid) {
+    next();
+    return;
+  }
+
+  validateSession(payload.sid)
+    .then((valid) => {
+      if (!valid) {
+        res.status(401).json({ error: "This session has been signed out" });
+        return;
+      }
+      next();
+    })
+    .catch(next);
 };
 
 /**

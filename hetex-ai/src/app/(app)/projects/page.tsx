@@ -11,13 +11,15 @@ export default function ProjectsPage() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   function load() {
     apiFetch<Project[]>("/projects")
       .then(setProjects)
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Could not load projects")
-      );
+      )
+      .finally(() => setLoading(false));
   }
 
   useEffect(load, []);
@@ -79,6 +81,13 @@ export default function ProjectsPage() {
         )}
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {loading &&
+            [0, 1].map((i) => (
+              <div
+                key={i}
+                className="h-[76px] animate-pulse rounded-xl border border-[var(--border-subtle)] bg-black/[0.03] dark:bg-white/[0.03]"
+              />
+            ))}
           {projects.map((p) => (
             <div
               key={p.id}
@@ -94,7 +103,7 @@ export default function ProjectsPage() {
               </p>
             </div>
           ))}
-          {projects.length === 0 && !creating && (
+          {!loading && projects.length === 0 && !creating && (
             <p className="text-sm text-[var(--text-secondary)]">
               No projects yet. Create one to group related conversations,
               files, and instructions.

@@ -40,6 +40,22 @@ export function MessageBubble({
       >
         {isUser ? (
           <span className="whitespace-pre-wrap">{content}</span>
+        ) : !content ? (
+          // Waiting on the first token. A static ellipsis is indistinguishable
+          // from a stalled request; movement says the connection is alive.
+          <span
+            className="flex items-center gap-1 py-1"
+            role="status"
+            aria-label="Hetex AI is typing"
+          >
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--text-secondary)]"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </span>
         ) : (
           <div className="prose-hetex">
             <ReactMarkdown
@@ -63,7 +79,7 @@ export function MessageBubble({
                 },
               }}
             >
-              {content || "…"}
+              {content}
             </ReactMarkdown>
           </div>
         )}

@@ -13,6 +13,7 @@ import {
   X,
   Globe,
   FileText,
+  ArrowDown,
 } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ComposerMenu } from "./composer-menu";
@@ -33,6 +34,13 @@ type PendingFile = {
 };
 
 type Project = { id: string; name: string };
+
+const SUGGESTIONS = [
+  "Explain a concept I'm stuck on",
+  "Help me draft an email",
+  "Review this code and find bugs",
+  "Plan a project step by step",
+];
 
 export function ChatWindow({
   conversationId,
@@ -55,11 +63,38 @@ export function ChatWindow({
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
 
+  // Only follow the stream while the user is already at the bottom. Scrolling
+  // up to re-read something and being yanked back down on every token is the
+  // single most irritating thing a chat UI can do.
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (pinnedToBottom) {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, pinnedToBottom]);
+
+  function handleScroll() {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight;
+    setPinnedToBottom(distanceFromBottom < 80);
+  }
+
+  // Grow the composer with its content instead of scrolling inside one line,
+  // capped so a long paste doesn't swallow the conversation.
+  function resizeTextarea() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }
+
+  useEffect(resizeTextarea, [input]);
 
   useEffect(() => {
     const SpeechRecognition =
@@ -315,16 +350,34 @@ export function ChatWindow({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-6 md:px-8"
+      >
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3 pt-24 text-center text-[var(--text-secondary)]">
+            <div className="flex flex-col items-center justify-center gap-3 pt-20 text-center text-[var(--text-secondary)]">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white">
                 <Sparkles size={22} />
               </span>
               <p className="text-lg font-medium text-[var(--text-primary)]">
                 What can I help you with?
               </p>
+              <div className="mt-3 grid w-full max-w-lg gap-2 sm:grid-cols-2">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setInput(s);
+                      textareaRef.current?.focus();
+                    }}
+                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors hover:border-hetex-green-500"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {messages.map((m) => (
@@ -360,7 +413,18 @@ export function ChatWindow({
         </div>
       </div>
 
-      <div className="border-t border-[var(--border-subtle)] px-4 py-4 md:px-8">
+      <div className="relative border-t border-[var(--border-subtle)] px-4 py-4 md:px-8">
+        {!pinnedToBottom && messages.length > 0 && (
+          <button
+            onClick={() => {
+              setPinnedToBottom(true);
+              scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+            }}
+            className="absolute -top-11 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-md hover:text-[var(--text-primary)]"
+          >
+            <ArrowDown size={13} /> Jump to latest
+          </button>
+        )}
         <div className="mx-auto max-w-3xl">
           {(pendingFiles.length > 0 || webSearchEnabled || selectedProject) && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -425,6 +489,7 @@ export function ChatWindow({
               </button>
             )}
             <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -433,9 +498,13 @@ export function ChatWindow({
                   sendMessage();
                 }
               }}
-              placeholder="Message Hetex AI..."
+              placeholder={
+                enterToSend
+                  ? "Message Hetex AI…  (Enter to send, Shift+Enter for a new line)"
+                  : "Message Hetex AI…"
+              }
               rows={1}
-              className="flex-1 resize-none rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-hetex-green-500"
+              className="max-h-[200px] flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-hetex-green-500"
             />
             {isStreaming ? (
               <button

@@ -41,7 +41,7 @@ const DEFAULTS: Preferences = {
   launchAtLogin: false,
   assistantName: "Hetex AI",
   responseStyle: "balanced",
-  model: "claude-sonnet-4-6",
+  model: "standard",
   memoryEnabled: false,
   enterToSend: true,
   dictationEnabled: true,

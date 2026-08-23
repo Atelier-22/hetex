@@ -12,7 +12,7 @@ import {
   getSystemPrompt,
   getUserPreferences,
 } from "../services/chat.service";
-import { providerForModel } from "../ai";
+import { providerForModel, resolveModelId } from "../ai";
 import type { ChatImage } from "../ai";
 import { learnInBackground } from "../services/learning.service";
 
@@ -135,7 +135,10 @@ chatRouter.post(
       chatHistoryEnabled,
     } = await getUserPreferences(userId);
 
+    // `model` is the public tier stored against the account; the provider needs
+    // the vendor's own identifier, which never leaves the server.
     const provider = providerForModel(model);
+    const vendorModel = resolveModelId(model);
     if (!provider.isConfigured()) {
       res.status(503).json({
         error:
@@ -271,7 +274,7 @@ chatRouter.post(
       try {
         for await (const chunk of provider.streamCompletion(history, {
           systemPrompt,
-          model,
+          model: vendorModel,
           webSearch: canSearch,
         })) {
           if (clientGone) break;
@@ -325,7 +328,7 @@ chatRouter.post(
 
     for await (const chunk of provider.streamCompletion(history, {
       systemPrompt,
-      model,
+      model: vendorModel,
       webSearch: canSearch,
     })) {
       if (chunk.type === "text" && chunk.text) fullText += chunk.text;

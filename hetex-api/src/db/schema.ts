@@ -57,7 +57,7 @@ export const userSettings = pgTable("user_settings", {
   assistantName: text("assistant_name").notNull().default("Hetex AI"),
   responseStyle: text("response_style").notNull().default("balanced"),
   // "Higher intelligence" — a more capable, more expensive model per request.
-  model: text("model").notNull().default("claude-sonnet-4-6"),
+  model: text("model").notNull().default("standard"),
   memoryEnabled: boolean("memory_enabled").notNull().default(false),
   enterToSend: boolean("enter_to_send").notNull().default(true),
   dictationEnabled: boolean("dictation_enabled").notNull().default(true),
@@ -178,7 +178,7 @@ export const conversations = pgTable("conversations", {
     onDelete: "set null",
   }),
   title: text("title").notNull().default("New Chat"),
-  model: text("model").notNull().default("claude-sonnet-4-6"),
+  model: text("model").notNull().default("standard"),
   pinned: boolean("pinned").notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

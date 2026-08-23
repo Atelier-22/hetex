@@ -38,13 +38,15 @@ export class AnthropicProvider implements AIProvider {
 
   readonly models = [
     {
-      id: "claude-sonnet-4-6",
+      id: "standard",
+      modelId: "claude-sonnet-4-6",
       label: "Standard",
       description:
         "Fast and capable, with web search and image understanding. The default.",
     },
     {
-      id: "claude-opus-5",
+      id: "advanced",
+      modelId: "claude-opus-5",
       label: "Advanced",
       description:
         "Stronger on hard reasoning, and several times more expensive per message. Web search and images included.",

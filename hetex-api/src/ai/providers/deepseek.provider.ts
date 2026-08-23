@@ -31,13 +31,15 @@ export class DeepSeekProvider implements AIProvider {
 
   readonly models = [
     {
-      id: "deepseek-chat",
+      id: "fast",
+      modelId: "deepseek-chat",
       label: "Fast",
       description:
         "Quick and inexpensive, strong at writing and code. Cannot search the web or read images.",
     },
     {
-      id: "deepseek-reasoner",
+      id: "reasoning",
+      modelId: "deepseek-reasoner",
       label: "Reasoning",
       description:
         "Works through problems step by step before answering — better at hard maths and logic, and slower. Cannot search the web or read images.",

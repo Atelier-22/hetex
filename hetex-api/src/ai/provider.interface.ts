@@ -62,8 +62,19 @@ export interface AIProvider {
 
   readonly capabilities: ProviderCapabilities;
 
-  /** Models this provider serves, in the order they should be offered. */
-  readonly models: { id: string; label: string; description: string }[];
+  /**
+   * Models this provider serves, in the order they should be offered.
+   *
+   * `id` is the public tier — what the client sees and what is stored against
+   * the account. `modelId` is the vendor's own identifier and never leaves the
+   * server, so nothing in the API response names the provider.
+   */
+  readonly models: {
+    id: string;
+    modelId: string;
+    label: string;
+    description: string;
+  }[];
 
   /** Whether this provider is currently usable (e.g. API key present) */
   isConfigured(): boolean;

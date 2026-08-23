@@ -114,6 +114,12 @@ export class AnthropicProvider implements AIProvider {
 
       yield { type: "done" };
     } catch (err) {
+      // The user gets a sentence they can act on; the operator gets the whole
+      // thing, including the request id needed to chase it with the provider.
+      console.error(
+        "Anthropic provider error:",
+        err instanceof Error ? err.message : err
+      );
       yield {
         type: "error",
         error: describeProviderError(err),
@@ -122,18 +128,48 @@ export class AnthropicProvider implements AIProvider {
   }
 }
 
+/**
+ * Turns a provider failure into something worth showing a user.
+ *
+ * The raw SDK message is often a JSON blob quoting internal request ids, which
+ * is noise to the person typing and a hint about our stack to anyone else. The
+ * full error is logged server-side by the caller; this is the sentence that
+ * reaches the screen.
+ */
 function describeProviderError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) {
-    return "The AI provider rejected the API key. Check ANTHROPIC_API_KEY on the server.";
+    return "The AI service rejected our credentials. This is a server configuration problem, not something you did.";
   }
+
   if (err instanceof Anthropic.RateLimitError) {
-    return "The AI provider is rate limiting requests right now. Try again in a moment.";
+    return "The AI service is busy right now. Wait a moment and try again.";
   }
+
   if (err instanceof Anthropic.BadRequestError) {
-    return `The AI provider rejected the request: ${err.message}`;
+    const message = err.message.toLowerCase();
+
+    // Anthropic reports a spend cap or exhausted credit as a 400, which would
+    // otherwise read as "you sent something malformed" — the opposite of what
+    // actually needs doing, and by whom.
+    if (message.includes("usage limit") || message.includes("usage limits")) {
+      return "This Hetex account has reached its AI usage limit. The account owner needs to raise the spending limit in the Anthropic console before chat will work again.";
+    }
+    if (message.includes("credit balance") || message.includes("insufficient")) {
+      return "The AI service account is out of credit. The account owner needs to top it up before chat will work again.";
+    }
+    if (message.includes("too long") || message.includes("max_tokens")) {
+      return "This conversation has grown too long for the model to process. Start a new chat to continue.";
+    }
+
+    return "The AI service rejected the request. If this keeps happening, the conversation may be too long — try starting a new chat.";
   }
+
   if (err instanceof Anthropic.APIError) {
-    return `AI provider error (${err.status}): ${err.message}`;
+    if (err.status && err.status >= 500) {
+      return "The AI service is having trouble on its end. Try again shortly.";
+    }
+    return `The AI service returned an error (${err.status}). Try again shortly.`;
   }
-  return err instanceof Error ? err.message : "Unknown provider error";
+
+  return "Something went wrong reaching the AI service. Try again.";
 }

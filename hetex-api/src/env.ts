@@ -31,6 +31,10 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 
   WEB_SEARCH_PROVIDER: z.string().optional(),
+
+  // Comma-separated emails granted admin access regardless of stored role.
+  // Bootstraps the first admin, since there is no admin to promote them.
+  ADMIN_EMAILS: z.string().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);

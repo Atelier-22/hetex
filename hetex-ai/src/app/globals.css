@@ -110,6 +110,30 @@
   --accent-on-soft: #ffffff;
 }
 
+/* --- Data visualisation -------------------------------------------------- */
+/* Chart marks are validated against the surface they render on, and are
+   deliberately NOT the accent variable: the accent is user-selectable, and a
+   chart whose colours change with a preference cannot be held to a contrast or
+   colourblindness gate. These are fixed and checked.
+
+   Bar: brand green stepped to clear the lightness band and 3:1 contrast in both
+   modes. Positive/negative: the blue-red diverging pair. Green/red was the
+   obvious pairing and fails — ΔE 4.1 under deuteranopia, indistinguishable to
+   red-green colourblind readers. */
+:root {
+  --viz-bar: #0a9153;
+  --viz-positive: #2a78d6;
+  --viz-negative: #e34948;
+  --viz-track: rgba(11, 21, 18, 0.06);
+}
+
+.dark {
+  --viz-bar: #0a9153;
+  --viz-positive: #3987e5;
+  --viz-negative: #e66767;
+  --viz-track: rgba(255, 255, 255, 0.08);
+}
+
 /* --- Text size ----------------------------------------------------------- */
 /* Tailwind sizes are all rem, so moving the root size scales the whole
    interface proportionally rather than just paragraph text. */

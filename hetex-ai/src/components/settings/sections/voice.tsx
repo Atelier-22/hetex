@@ -85,16 +85,13 @@ export function VoiceSection() {
         icon={Mic}
         description={
           sttSupported
-            ? "Shows a microphone in the composer."
-            : "Your browser has no speech recognition. Chrome and Edge do; Firefox and Safari do not."
+            ? "The microphone is always in the composer — there is nothing to switch on."
+            : "Your browser has no speech recognition, so no microphone appears. Chrome and Edge support it; Firefox and Safari do not."
         }
       >
-        <SettingsToggle
-          label="Dictation"
-          checked={prefs.dictationEnabled}
-          disabled={!sttSupported}
-          onChange={(v) => run(() => update({ dictationEnabled: v }))}
-        />
+        <span className="text-sm text-[var(--text-secondary)]">
+          {sttSupported ? "Available" : "Unavailable here"}
+        </span>
       </SettingsRow>
 
       <SettingsRow

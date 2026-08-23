@@ -34,7 +34,7 @@ export type Preferences = {
 };
 
 const DEFAULTS: Preferences = {
-  theme: "system",
+  theme: "light",
   accentColor: "green",
   textSize: "medium",
   language: "auto",

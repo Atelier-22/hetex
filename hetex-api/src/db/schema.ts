@@ -51,7 +51,7 @@ export const userSettings = pgTable("user_settings", {
     .notNull()
     .unique()
     .references(() => users.id, { onDelete: "cascade" }),
-  theme: text("theme").notNull().default("system"),
+  theme: text("theme").notNull().default("light"),
   accentColor: text("accent_color").notNull().default("green"),
   textSize: text("text_size").notNull().default("medium"),
   assistantName: text("assistant_name").notNull().default("Hetex AI"),

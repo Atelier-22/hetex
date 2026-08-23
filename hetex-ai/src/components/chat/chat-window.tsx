@@ -108,11 +108,12 @@ export function ChatWindow({
     setMicSupported(Boolean(SpeechRecognition));
   }, []);
 
-  // Dictation is opt-out in Settings → Voice, and only offered where the
-  // browser can actually do it — Chrome and Edge have Web Speech recognition,
-  // Firefox and Safari do not. Shown while preferences are still loading so
-  // the button doesn't appear a moment after the rest of the composer.
-  const showMic = micSupported && (!loaded || prefs.dictationEnabled);
+  // Always shown where the browser supports it. It used to be gated on a
+  // setting, which meant anyone who never opened Settings could end up without
+  // a microphone and no way to know why. The only condition now is whether
+  // speech recognition exists at all — Chrome and Edge have it, Firefox and
+  // Safari do not.
+  const showMic = micSupported;
 
   function toggleListening() {
     const SpeechRecognition =
@@ -127,7 +128,7 @@ export function ChatWindow({
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
+    recognition.lang = prefs.voiceInputLang ?? "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 

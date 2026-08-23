@@ -60,24 +60,25 @@ export function Landing() {
         />
 
         <div className="relative mx-auto max-w-3xl text-center">
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-            What can Hetex AI help you with?
+          <h1 className="text-[2rem] font-semibold tracking-tight sm:text-5xl">
+            What can I help with?
           </h1>
 
-          <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-[var(--text-secondary)] sm:text-lg">
+          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-[var(--text-secondary)] sm:mt-5 sm:text-lg">
             AI should empower people, not replace them — so Hetex AI is a
             straightforward assistant for thinking, writing and working through
             problems, on the web and on your phone.
           </p>
 
-          <div className="mx-auto mt-9 max-w-2xl">
+          <div className="mx-auto mt-8 max-w-2xl sm:mt-9">
             <HeroPrompt />
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <PillLink href="/register">Start a conversation</PillLink>
+            <PillLink href="/register">Talk with Hetex AI</PillLink>
             <PillLink href="#what-it-does">What it does</PillLink>
             <PillLink href="/company">Our story</PillLink>
+            <PillLink href="/pricing">Pricing</PillLink>
           </div>
 
           <p className="mt-10 text-sm text-[var(--text-secondary)]">

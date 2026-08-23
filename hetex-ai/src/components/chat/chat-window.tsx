@@ -56,8 +56,10 @@ export function ChatWindow({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
-  const { prefs } = usePreferences();
+  const { prefs, loaded } = usePreferences();
   const enterToSend = prefs.enterToSend;
+  const [searching, setSearching] = useState(false);
+  const [sources, setSources] = useState<{ title: string; url: string }[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
@@ -106,10 +108,11 @@ export function ChatWindow({
     setMicSupported(Boolean(SpeechRecognition));
   }, []);
 
-  // Dictation is opt-out in settings, and only offered where the browser can
-  // actually do it — Chrome and Edge have Web Speech recognition, Firefox
-  // does not.
-  const showMic = micSupported && prefs.dictationEnabled;
+  // Dictation is opt-out in Settings → Voice, and only offered where the
+  // browser can actually do it — Chrome and Edge have Web Speech recognition,
+  // Firefox and Safari do not. Shown while preferences are still loading so
+  // the button doesn't appear a moment after the rest of the composer.
+  const showMic = micSupported && (!loaded || prefs.dictationEnabled);
 
   function toggleListening() {
     const SpeechRecognition =
@@ -216,7 +219,15 @@ export function ChatWindow({
 
           if (eventType === "meta" && data.conversationId && !conversationId) {
             newConversationId = data.conversationId;
+          } else if (eventType === "searching") {
+            setSearching(true);
+          } else if (eventType === "sources") {
+            setSearching(false);
+            setSources(data.sources ?? []);
           } else if (eventType === "chunk") {
+            // The first token means searching is over, whether or not a
+            // sources event arrives.
+            setSearching(false);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -251,6 +262,7 @@ export function ChatWindow({
 
     setError(null);
     setLastFailedMessage(null);
+    setSources([]);
     setInput("");
     const filesToSend = pendingFiles;
     setPendingFiles([]);
@@ -395,6 +407,35 @@ export function ChatWindow({
               }
             />
           ))}
+          {searching && (
+            <div className="flex items-center gap-2 self-start rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)]">
+              <Globe size={12} className="animate-pulse" />
+              Searching the web…
+            </div>
+          )}
+
+          {sources.length > 0 && (
+            <div className="self-start rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5">
+              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)]">
+                <Globe size={11} /> Sources
+              </p>
+              <ul className="flex flex-col gap-1">
+                {sources.map((s) => (
+                  <li key={s.url}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="text-accent line-clamp-1 text-xs hover:underline"
+                    >
+                      {s.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-center justify-between gap-3 rounded-xl border border-hetex-red-500/30 bg-hetex-red-500/10 px-4 py-2.5 text-sm text-hetex-red-500">
               <span>{error}</span>
@@ -476,9 +517,9 @@ export function ChatWindow({
             {showMic && (
               <button
                 onClick={toggleListening}
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-11 sm:w-11 ${
                   isListening
-                    ? "border-hetex-red-500 text-hetex-red-500"
+                    ? "animate-pulse border-hetex-red-500 text-hetex-red-500"
                     : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
                 }`}
                 aria-label={isListening ? "Stop listening" : "Voice input"}
@@ -497,18 +538,20 @@ export function ChatWindow({
                   sendMessage();
                 }
               }}
-              placeholder={
-                enterToSend
-                  ? "Message Hetex AI…  (Enter to send, Shift+Enter for a new line)"
-                  : "Message Hetex AI…"
-              }
+              // The keyboard hint is desktop-only: there is no Shift+Enter on a
+              // phone, and the long placeholder is truncated on a narrow input
+              // anyway.
+              placeholder="Message Hetex AI…"
               rows={1}
-              className="max-h-[200px] flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus-accent"
+              // 16px on mobile: iOS Safari zooms the whole page in when a
+              // focused input's text is smaller than that, and never zooms back
+              // out.
+              className="max-h-[200px] min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-base outline-none focus-accent sm:px-4 sm:py-3 sm:text-sm"
             />
             {isStreaming ? (
               <button
                 onClick={stopGeneration}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)]"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] sm:h-11 sm:w-11"
                 aria-label="Stop generating"
               >
                 <Square size={16} />
@@ -517,7 +560,7 @@ export function ChatWindow({
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() && pendingFiles.length === 0}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-gradient text-white disabled:opacity-40"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-gradient text-white disabled:opacity-40 sm:h-11 sm:w-11"
                 aria-label="Send message"
               >
                 <Send size={16} />

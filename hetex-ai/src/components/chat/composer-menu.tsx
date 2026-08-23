@@ -63,7 +63,7 @@ export function ComposerMenu({
       />
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border sm:h-11 sm:w-11 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
         aria-label="Add"
       >
         <Plus size={18} />

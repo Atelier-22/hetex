@@ -23,12 +23,21 @@ export interface GenerationOptions {
   model?: string;
   maxTokens?: number;
   systemPrompt?: string;
+  /** Let the model search the web for this turn. */
+  webSearch?: boolean;
+}
+
+export interface WebSource {
+  title: string;
+  url: string;
 }
 
 export interface StreamChunk {
-  type: "text" | "done" | "error";
+  type: "text" | "done" | "error" | "searching" | "sources";
   text?: string;
   error?: string;
+  /** Present on "sources": the pages the model actually consulted. */
+  sources?: WebSource[];
 }
 
 export interface AIProvider {

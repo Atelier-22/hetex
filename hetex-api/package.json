@@ -16,7 +16,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.120.0",
     "@paralleldrive/cuid2": "^2.2.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

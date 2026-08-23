@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   GenerationOptions,
   StreamChunk,
+  WebSource,
 } from "../provider.interface";
 
 type SupportedImageMediaType =
@@ -93,6 +94,19 @@ export class AnthropicProvider implements AIProvider {
         systemMessages.map((m) => m.content).join("\n\n") ||
         undefined;
 
+      // Anthropic runs web search server-side: the model issues the queries,
+      // reads the results, and cites them, all inside one request. No search
+      // API key of our own and no client-side tool loop.
+      const tools = options?.webSearch
+        ? [
+            {
+              type: "web_search_20260209" as const,
+              name: "web_search" as const,
+              max_uses: 5,
+            },
+          ]
+        : undefined;
+
       // `temperature` is deliberately not sent: it is rejected with a 400 on
       // Sonnet 5 / Opus 5 and the 4.7+ family, so omitting it keeps
       // ANTHROPIC_MODEL swappable without a code change.
@@ -100,8 +114,11 @@ export class AnthropicProvider implements AIProvider {
         model: options?.model ?? env.ANTHROPIC_MODEL,
         max_tokens: options?.maxTokens ?? 4096,
         ...(systemPrompt ? { system: systemPrompt } : {}),
+        ...(tools ? { tools } : {}),
         messages: turnMessages,
       });
+
+      let announcedSearch = false;
 
       for await (const event of stream) {
         if (
@@ -109,7 +126,21 @@ export class AnthropicProvider implements AIProvider {
           event.delta.type === "text_delta"
         ) {
           yield { type: "text", text: event.delta.text };
+        } else if (
+          event.type === "content_block_start" &&
+          event.content_block.type === "server_tool_use" &&
+          !announcedSearch
+        ) {
+          // Searching adds seconds of silence before any text arrives. Saying
+          // so is the difference between "thinking" and "broken".
+          announcedSearch = true;
+          yield { type: "searching" };
         }
+      }
+
+      if (options?.webSearch) {
+        const sources = extractSources(await stream.finalMessage());
+        if (sources.length > 0) yield { type: "sources", sources };
       }
 
       yield { type: "done" };
@@ -136,6 +167,32 @@ export class AnthropicProvider implements AIProvider {
  * full error is logged server-side by the caller; this is the sentence that
  * reaches the screen.
  */
+/**
+ * Pulls the pages the model actually read out of a finished message.
+ *
+ * A web_search_tool_result's `content` is a list on success and a single error
+ * object on failure — the tool reports failures as HTTP 200 rather than
+ * throwing, so branching on the shape is the only way to tell them apart.
+ */
+function extractSources(message: Anthropic.Message): WebSource[] {
+  const sources: WebSource[] = [];
+  const seen = new Set<string>();
+
+  for (const block of message.content) {
+    if (block.type !== "web_search_tool_result") continue;
+    if (!Array.isArray(block.content)) continue; // an error object, not results
+
+    for (const result of block.content) {
+      if (result.type !== "web_search_result") continue;
+      if (seen.has(result.url)) continue; // the model often re-reads a page
+      seen.add(result.url);
+      sources.push({ title: result.title || result.url, url: result.url });
+    }
+  }
+
+  return sources;
+}
+
 function describeProviderError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) {
     return "The AI service rejected our credentials. This is a server configuration problem, not something you did.";

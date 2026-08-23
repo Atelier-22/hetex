@@ -32,7 +32,9 @@ export function MessageBubble({
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+        // Wider on a phone: 85% of a narrow screen wastes the margin without
+        // helping readability, which is what that limit is for on desktop.
+        className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed sm:max-w-[85%] sm:px-4 sm:text-sm ${
           isUser
             ? "bg-accent-gradient text-white"
             : "bg-[var(--bg-secondary)] border border-[var(--border-subtle)]"

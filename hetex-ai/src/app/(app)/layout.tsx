@@ -13,7 +13,10 @@ export default async function AppLayout({
   if (!session) redirect("/login");
 
   return (
-    <div className="flex h-screen w-full">
+    // h-dvh, not h-screen: on a phone 100vh includes the space under the
+    // browser's address bar, so the composer sits below the fold until the bar
+    // hides. dvh tracks the actually-visible height.
+    <div className="flex h-dvh w-full overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-hidden">{children}</main>
       <SettingsOverlay />

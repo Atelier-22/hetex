@@ -3,7 +3,6 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db";
 import { requireAuth, asyncHandler } from "../auth/middleware";
-import { webSearch } from "../tools/web-search.tool";
 import {
   getOrCreateConversation,
   saveMessage,
@@ -15,6 +14,7 @@ import {
   getProvider,
 } from "../services/chat.service";
 import type { ChatImage } from "../ai";
+import { learnInBackground } from "../services/learning.service";
 
 export const chatRouter = Router();
 
@@ -187,14 +187,13 @@ chatRouter.post(
       chatHistoryEnabled,
     } = await getUserPreferences(userId);
 
-    let webSearchNote = "";
-    if (webSearchEnabled) {
-      await recordUsage(userId, "tool_call");
-      const result = await webSearch(message);
-      if (!result.available) {
-        webSearchNote = `\n\nThe user turned on web search for this message, but no search provider is configured yet. Briefly let them know you're answering from your training knowledge instead of live search results.`;
-      }
-    }
+    if (webSearchEnabled) await recordUsage(userId, "tool_call");
+
+    // Search runs inside the provider now — the model issues its own queries
+    // server-side rather than us pre-fetching results and pasting them in.
+    const webSearchNote = webSearchEnabled
+      ? `\n\nWeb search is available to you for this message. Use it when the answer depends on current information, and cite what you used.`
+      : "";
 
     const history = await buildMessageHistory(conversation.id);
     // Images ride along with the live turn only — they are not replayed into
@@ -249,11 +248,16 @@ chatRouter.post(
         for await (const chunk of provider.streamCompletion(history, {
           systemPrompt,
           model,
+          webSearch: webSearchEnabled,
         })) {
           if (clientGone) break;
           if (chunk.type === "text" && chunk.text) {
             fullText += chunk.text;
             send("chunk", { text: chunk.text });
+          } else if (chunk.type === "searching") {
+            send("searching", {});
+          } else if (chunk.type === "sources") {
+            send("sources", { sources: chunk.sources });
           } else if (chunk.type === "error") {
             send("error", { message: chunk.error });
           }
@@ -263,6 +267,15 @@ chatRouter.post(
         // answer they saw on screen should still be there on reload.
         if (fullText.trim().length > 0) {
           await saveMessage(conversation.id, "assistant", fullText);
+        }
+
+        // After the reply is out, not before — this must never delay it.
+        if (fullText.trim()) {
+          learnInBackground({
+            userId,
+            userMessage: message,
+            assistantMessage: fullText,
+          });
         }
 
         if (!chatHistoryEnabled) await discardConversation(conversation.id);
@@ -284,12 +297,18 @@ chatRouter.post(
     let fullText = "";
     let streamError: string | null = null;
 
+    const collectedSources: { title: string; url: string }[] = [];
+
     for await (const chunk of provider.streamCompletion(history, {
       systemPrompt,
       model,
+      webSearch: webSearchEnabled,
     })) {
       if (chunk.type === "text" && chunk.text) fullText += chunk.text;
-      else if (chunk.type === "error") streamError = chunk.error ?? "Generation failed";
+      else if (chunk.type === "sources" && chunk.sources)
+        collectedSources.push(...chunk.sources);
+      else if (chunk.type === "error")
+        streamError = chunk.error ?? "Generation failed";
     }
 
     if (streamError && !fullText) {
@@ -299,6 +318,11 @@ chatRouter.post(
 
     if (fullText.trim().length > 0) {
       await saveMessage(conversation.id, "assistant", fullText);
+      learnInBackground({
+        userId,
+        userMessage: message,
+        assistantMessage: fullText,
+      });
     }
 
     if (!chatHistoryEnabled) await discardConversation(conversation.id);
@@ -307,6 +331,7 @@ chatRouter.post(
       conversationId: conversation.id,
       title,
       reply: fullText,
+      ...(collectedSources.length ? { sources: collectedSources } : {}),
       ...(chatHistoryEnabled ? {} : { retained: false }),
       ...(streamError ? { warning: streamError } : {}),
     });

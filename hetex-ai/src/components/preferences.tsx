@@ -11,10 +11,14 @@ import { useTheme } from "next-themes";
 import { useSession } from "next-auth/react";
 import { apiFetch } from "@/lib/api-client";
 
+export type NotificationChannel = "push" | "email" | "push_email" | "off";
+
 export type Preferences = {
   theme: string;
   accentColor: string;
   textSize: string;
+  language: string;
+  launchAtLogin: boolean;
   assistantName: string;
   responseStyle: string;
   model: string;
@@ -22,12 +26,19 @@ export type Preferences = {
   enterToSend: boolean;
   dictationEnabled: boolean;
   voiceName: string | null;
+  voiceInputLang: string | null;
+  notificationPrefs: Record<string, NotificationChannel>;
+  customInstructions: string | null;
+  chatHistoryEnabled: boolean;
+  trainingOptIn: boolean;
 };
 
 const DEFAULTS: Preferences = {
   theme: "system",
   accentColor: "green",
   textSize: "medium",
+  language: "auto",
+  launchAtLogin: false,
   assistantName: "Hetex AI",
   responseStyle: "balanced",
   model: "claude-sonnet-4-6",
@@ -35,12 +46,20 @@ const DEFAULTS: Preferences = {
   enterToSend: true,
   dictationEnabled: true,
   voiceName: null,
+  voiceInputLang: null,
+  notificationPrefs: {},
+  customInstructions: null,
+  chatHistoryEnabled: true,
+  trainingOptIn: false,
 };
 
 type Ctx = {
   prefs: Preferences;
   loaded: boolean;
-  /** Applies immediately, saves in the background, reverts if the save fails. */
+  /**
+   * Applies immediately, saves in the background, reverts if the save fails.
+   * Rejects on failure so callers showing a save indicator can react.
+   */
   update: (patch: Partial<Preferences>) => Promise<void>;
   error: string | null;
 };
@@ -117,6 +136,9 @@ export function PreferencesProvider({
         setError(
           err instanceof Error ? err.message : "Could not save that setting"
         );
+        // Rethrow so a caller awaiting this knows it failed. Swallowing it
+        // would let a section report "Saved" over a rejected write.
+        throw err;
       }
     },
     [prefs, setTheme]

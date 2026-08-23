@@ -33,8 +33,14 @@ const envSchema = z.object({
   WEB_SEARCH_PROVIDER: z.string().optional(),
 
   // Comma-separated emails granted admin access regardless of stored role.
-  // Bootstraps the first admin, since there is no admin to promote them.
+  // Requires those people to have a Hetex account.
   ADMIN_EMAILS: z.string().default(""),
+
+  // A standalone owner login for the dashboard, needing no Hetex account at
+  // all. Set both to enable it. Kept in the environment rather than the code
+  // because this repository is public.
+  ADMIN_EMAIL: z.string().optional(),
+  ADMIN_PASSWORD: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

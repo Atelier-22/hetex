@@ -1,13 +1,48 @@
 import { Router } from "express";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema } from "../db";
-import { requireAuth, asyncHandler } from "../auth/middleware";
-import { requireAdmin, isAdminEmail } from "../auth/admin";
+import { asyncHandler } from "../auth/middleware";
+import {
+  requireAdmin,
+  isAdminEmail,
+  checkOwnerLogin,
+  issueOwnerToken,
+} from "../auth/admin";
 import { availableModels } from "../ai";
 
 export const adminRouter = Router();
 
-adminRouter.use(requireAuth, requireAdmin);
+/**
+ * Owner sign-in. Public by necessity — it is the door.
+ *
+ * One message for every failure, so it cannot be used to discover whether an
+ * email is the admin one.
+ */
+adminRouter.post(
+  "/login",
+  asyncHandler(async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email : "";
+    const password =
+      typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!email || !password) {
+      res.status(400).json({ error: "Enter your email and password" });
+      return;
+    }
+
+    if (checkOwnerLogin(email, password)) {
+      res.json({ token: issueOwnerToken() });
+      return;
+    }
+
+    res
+      .status(401)
+      .json({ error: "Those details don't give access to the dashboard." });
+  })
+);
+
+// Everything below requires admin.
+adminRouter.use(requireAdmin);
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -304,20 +339,10 @@ adminRouter.patch(
   })
 );
 
-/** Whether the caller is an admin — used to decide if the UI shows the link. */
-export const adminCheckRouter = Router();
-adminCheckRouter.get(
+/** Confirms a token is still an admin one. */
+adminRouter.get(
   "/me",
-  requireAuth,
   asyncHandler(async (req, res) => {
-    const user = await db.query.users.findFirst({
-      where: eq(schema.users.id, req.userId!),
-      columns: { email: true, role: true },
-    });
-    res.json({
-      isAdmin: Boolean(
-        user && (user.role === "admin" || isAdminEmail(user.email))
-      ),
-    });
+    res.json({ isAdmin: true, email: req.userEmail });
   })
 );

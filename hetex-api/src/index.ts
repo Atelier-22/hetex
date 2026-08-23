@@ -15,7 +15,7 @@ import { memoryRouter } from "./routes/memory.routes";
 import { securityRouter } from "./routes/security.routes";
 import { integrationsRouter } from "./routes/integrations.routes";
 import { billingRouter } from "./routes/billing.routes";
-import { adminRouter, adminCheckRouter } from "./routes/admin.routes";
+import { adminRouter } from "./routes/admin.routes";
 import {
   libraryRouter,
   usageRouter,
@@ -72,7 +72,6 @@ app.use("/memory", memoryRouter);
 app.use("/security", securityRouter);
 app.use("/integrations", integrationsRouter);
 app.use("/billing", billingRouter);
-app.use("/admin", adminCheckRouter);
 app.use("/admin", adminRouter);
 app.use("/library", libraryRouter);
 app.use("/usage", usageRouter);

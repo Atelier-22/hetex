@@ -13,6 +13,8 @@ export interface TokenPayload {
    * expire, rather than logging everyone out on deploy.
    */
   sid?: string;
+  /** Set on the standalone owner token, which has no user record behind it. */
+  adm?: boolean;
 }
 
 export function signToken(payload: TokenPayload): string {
@@ -30,6 +32,7 @@ export function verifyToken(token: string): TokenPayload | null {
       sub: decoded.sub,
       email: String(decoded.email ?? ""),
       sid: typeof decoded.sid === "string" ? decoded.sid : undefined,
+      adm: decoded.adm === true,
     };
   } catch {
     // Expired, malformed, or signed with a different secret — all mean "not

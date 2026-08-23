@@ -23,9 +23,11 @@ export async function POST(request: Request) {
     );
   }
 
+  // One call. The API decides whether these credentials are the owner's, or
+  // belong to a Hetex account that has been made an admin.
   let token: string | undefined;
   try {
-    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    const res = await fetch(`${API_BASE_URL}/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -38,22 +40,12 @@ export async function POST(request: Request) {
     );
   }
 
-  // Same message whether the credentials were wrong or the account simply is
-  // not an admin. Telling them apart would let someone probe for admin emails.
-  const denied = Response.json(
-    { error: "Those details don't give access to the dashboard." },
-    { status: 401 }
-  );
-
-  if (!token) return denied;
-
-  const check = await fetch(`${API_BASE_URL}/admin/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).catch(() => null);
-
-  if (!check?.ok) return denied;
-  const { isAdmin } = await check.json();
-  if (!isAdmin) return denied;
+  if (!token) {
+    return Response.json(
+      { error: "Those details don't give access to the dashboard." },
+      { status: 401 }
+    );
+  }
 
   cookies().set(ADMIN_COOKIE, token, {
     httpOnly: true,

@@ -189,10 +189,16 @@ chatRouter.post(
 
     if (webSearchEnabled) await recordUsage(userId, "tool_call");
 
-    // Search runs inside the provider now — the model issues its own queries
-    // server-side rather than us pre-fetching results and pasting them in.
+    // The search tool is offered on every message, not only when the composer
+    // toggle is on. Gating it meant the model genuinely could not search by
+    // default and said so — which read as "this product cannot browse" rather
+    // than "you did not switch it on". The model decides per message whether a
+    // query is warranted, so an offline question costs nothing extra.
+    //
+    // The toggle now means "prefer to search", for when the user knows the
+    // answer needs looking up and the model might not.
     const webSearchNote = webSearchEnabled
-      ? `\n\nWeb search is available to you for this message. Use it when the answer depends on current information, and cite what you used.`
+      ? `\n\nThe user has explicitly asked you to look this up. Search the web for this message even if you think you know the answer, and cite what you used.`
       : "";
 
     const history = await buildMessageHistory(conversation.id);
@@ -248,7 +254,7 @@ chatRouter.post(
         for await (const chunk of provider.streamCompletion(history, {
           systemPrompt,
           model,
-          webSearch: webSearchEnabled,
+          webSearch: true,
         })) {
           if (clientGone) break;
           if (chunk.type === "text" && chunk.text) {
@@ -302,7 +308,7 @@ chatRouter.post(
     for await (const chunk of provider.streamCompletion(history, {
       systemPrompt,
       model,
-      webSearch: webSearchEnabled,
+      webSearch: true,
     })) {
       if (chunk.type === "text" && chunk.text) fullText += chunk.text;
       else if (chunk.type === "sources" && chunk.sources)

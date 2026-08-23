@@ -15,6 +15,8 @@ import { HetexLockup } from "../logo";
 const LINKS = [
   { href: "/#what-it-does", label: "Product" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/help", label: "Help" },
+  { href: "/changelog", label: "Changelog" },
   { href: "/company", label: "Company" },
 ];
 

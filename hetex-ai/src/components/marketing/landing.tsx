@@ -5,6 +5,9 @@ import {
   Library,
   Smartphone,
   ArrowRight,
+  ShieldCheck,
+  Globe,
+  Brain,
 } from "lucide-react";
 import { MarketingNav } from "./nav";
 import { MarketingFooter } from "./footer";
@@ -22,7 +25,17 @@ const FEATURES = [
   {
     icon: MessageSquare,
     title: "Real conversations",
-    body: "Chat with Claude through Hetex. Replies stream as they are written, and every conversation is saved so you can pick it back up later.",
+    body: "Replies stream as they are written, and every conversation is saved so you can pick it back up later — or switched off entirely if you would rather nothing were kept.",
+  },
+  {
+    icon: Globe,
+    title: "It can look things up",
+    body: "When an answer depends on something current, Hetex searches the web itself and shows you the pages it read, so you can check the source rather than take its word.",
+  },
+  {
+    icon: Brain,
+    title: "It learns how you work",
+    body: "Turn memory on and Hetex notes what matters — the language you write in, the answers you find useful — so you stop explaining yourself every time.",
   },
   {
     icon: FolderKanban,
@@ -116,6 +129,128 @@ export function Landing() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ---------------- How it works ---------------- */}
+      <section className="border-t border-[var(--border-subtle)] px-5 py-20">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
+            How it works
+          </h2>
+
+          <div className="mt-12 grid gap-8 sm:grid-cols-3">
+            {[
+              {
+                step: "01",
+                title: "Ask",
+                body: "Type it, or press the microphone and say it. Attach an image if it helps explain.",
+              },
+              {
+                step: "02",
+                title: "It looks things up",
+                body: "When an answer depends on current information, Hetex searches the web itself and shows you the pages it read.",
+              },
+              {
+                step: "03",
+                title: "It gets to know you",
+                body: "Switch memory on and it remembers how you like to work, so you stop repeating yourself. You can read and delete everything it has noted.",
+              },
+            ].map((s) => (
+              <div key={s.step}>
+                <span className="text-accent font-mono text-xs font-semibold">
+                  {s.step}
+                </span>
+                <h3 className="mt-2 text-base font-semibold">{s.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-[var(--text-secondary)]">
+                  {s.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- Your data ---------------- */}
+      <section className="border-t border-[var(--border-subtle)] px-5 py-20">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex items-start gap-4">
+            <span className="bg-accent-gradient hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white sm:flex">
+              <ShieldCheck size={19} />
+            </span>
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">
+                Your conversations are yours
+              </h2>
+              <p className="mt-3 text-[15px] leading-relaxed text-[var(--text-secondary)]">
+                We do not train on what you write — Hetex does not train models
+                at all. Memory is off until you turn it on. You can switch off
+                chat history entirely, and conversations are then deleted as
+                each reply finishes.
+              </p>
+              <p className="mt-3 text-[15px] leading-relaxed text-[var(--text-secondary)]">
+                Export everything as a single file, delete all of it, or delete
+                your account — each takes effect immediately, with no email to
+                wait for and no recovery window to trap you.
+              </p>
+              <Link
+                href="/privacy"
+                className="text-accent mt-4 inline-flex items-center gap-1 text-sm font-medium hover:underline"
+              >
+                Read the privacy page <ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- FAQ ---------------- */}
+      <section className="border-t border-[var(--border-subtle)] px-5 py-20">
+        <div className="mx-auto max-w-2xl">
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Common questions
+          </h2>
+          <div className="mt-8 flex flex-col gap-3">
+            {[
+              {
+                q: "What does it cost?",
+                a: "Nothing. Hetex is free while in early access, and there are no paid plans yet.",
+              },
+              {
+                q: "Can it search the web?",
+                a: "Yes, and it decides when to on its own. Answers that used the web show the pages they came from.",
+              },
+              {
+                q: "Does it remember me?",
+                a: "Only if you switch memory on. It is off by default, and every remembered item is visible and deletable.",
+              },
+              {
+                q: "Is there a mobile app?",
+                a: "There is a React Native app sharing the same backend, and the web app works on a phone browser.",
+              },
+            ].map(({ q, a }) => (
+              <details
+                key={q}
+                className="group rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3.5"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-medium marker:content-none">
+                  {q}
+                  <span className="shrink-0 text-[var(--text-secondary)] transition-transform group-open:rotate-45">
+                    +
+                  </span>
+                </summary>
+                <p className="mt-2.5 text-sm leading-relaxed text-[var(--text-secondary)]">
+                  {a}
+                </p>
+              </details>
+            ))}
+          </div>
+          <Link
+            href="/help"
+            className="text-accent mt-5 inline-flex items-center gap-1 text-sm font-medium hover:underline"
+          >
+            More answers <ArrowRight size={14} />
+          </Link>
         </div>
       </section>
 

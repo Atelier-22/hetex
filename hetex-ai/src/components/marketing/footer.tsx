@@ -14,24 +14,41 @@ const COLUMNS = [
     links: [
       { href: "/#what-it-does", label: "What it does" },
       { href: "/pricing", label: "Pricing" },
+      { href: "/changelog", label: "Changelog" },
       { href: "/register", label: "Get started" },
       { href: "/login", label: "Log in" },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { href: "/help", label: "Help" },
+      { href: "/status", label: "Status" },
+      {
+        href: "https://github.com/Atelier-22/hetex",
+        label: "Source on GitHub",
+        external: true,
+      },
+      {
+        href: "https://github.com/Atelier-22/hetex/issues",
+        label: "Report a problem",
+        external: true,
+      },
     ],
   },
   {
     title: "Company",
     links: [
       { href: "/company", label: "Our story" },
-      {
-        href: "https://github.com/Atelier-22/hetex",
-        label: "Source on GitHub",
-        external: true,
-      },
+      { href: "/careers", label: "Careers" },
     ],
   },
   {
     title: "Legal",
-    links: [{ href: "/terms", label: "Terms & Conditions" }],
+    links: [
+      { href: "/privacy", label: "Privacy" },
+      { href: "/terms", label: "Terms" },
+    ],
   },
 ];
 
@@ -39,7 +56,7 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-[var(--border-subtle)] px-5 py-12">
       <div className="mx-auto max-w-5xl">
-        <div className="grid gap-8 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
           {COLUMNS.map((col) => (
             <div key={col.title}>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">

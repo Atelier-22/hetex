@@ -93,7 +93,8 @@ export async function buildMessageHistory(
 export function getSystemPrompt(
   assistantName: string,
   responseStyle: string = "balanced",
-  memoryEntries: string[] = []
+  memoryEntries: string[] = [],
+  customInstructions?: string | null
 ) {
   const styleLine =
     responseStyle === "concise"
@@ -109,7 +110,13 @@ export function getSystemPrompt(
           .join("\n")}`
       : "";
 
-  return `${SYSTEM_PROMPT_BASE(assistantName)}\n\n${styleLine}${memoryBlock}`;
+  // Placed last so it carries the most weight, and fenced so a long
+  // instruction can't be mistaken for part of the base prompt.
+  const instructionsBlock = customInstructions?.trim()
+    ? `\n\nThe user has given you these standing instructions. Follow them unless they conflict with the guidance above:\n"""\n${customInstructions.trim()}\n"""`
+    : "";
+
+  return `${SYSTEM_PROMPT_BASE(assistantName)}\n\n${styleLine}${memoryBlock}${instructionsBlock}`;
 }
 
 export async function getUserPreferences(userId: string) {
@@ -134,6 +141,9 @@ export async function getUserPreferences(userId: string) {
     // that has never touched the setting follows ANTHROPIC_MODEL.
     model: settings?.model || undefined,
     memoryEntries,
+    customInstructions: settings?.customInstructions ?? null,
+    // Defaults to true when no row exists, matching the column default.
+    chatHistoryEnabled: settings?.chatHistoryEnabled ?? true,
   };
 }
 

@@ -12,6 +12,9 @@ import { conversationsRouter } from "./routes/conversations.routes";
 import { projectsRouter } from "./routes/projects.routes";
 import { settingsRouter } from "./routes/settings.routes";
 import { memoryRouter } from "./routes/memory.routes";
+import { securityRouter } from "./routes/security.routes";
+import { integrationsRouter } from "./routes/integrations.routes";
+import { billingRouter } from "./routes/billing.routes";
 import {
   libraryRouter,
   usageRouter,
@@ -65,6 +68,9 @@ app.use("/conversations", conversationsRouter);
 app.use("/projects", projectsRouter);
 app.use("/settings", settingsRouter);
 app.use("/memory", memoryRouter);
+app.use("/security", securityRouter);
+app.use("/integrations", integrationsRouter);
+app.use("/billing", billingRouter);
 app.use("/library", libraryRouter);
 app.use("/usage", usageRouter);
 app.use("/feedback", feedbackRouter);

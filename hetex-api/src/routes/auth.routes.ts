@@ -4,6 +4,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db";
 import { signToken } from "../auth/jwt";
+import { createSession } from "../auth/sessions";
 import { requireAuth, asyncHandler } from "../auth/middleware";
 
 export const authRouter = Router();
@@ -65,8 +66,10 @@ authRouter.post(
 
     await db.insert(schema.userSettings).values({ userId: user.id });
 
+    const session = await createSession(user.id, req);
+
     res.status(201).json({
-      token: signToken({ sub: user.id, email: user.email }),
+      token: signToken({ sub: user.id, email: user.email, sid: session.id }),
       user: publicUser(user),
     });
   })
@@ -97,8 +100,12 @@ authRouter.post(
       return;
     }
 
+    // Each sign-in is its own session, so the Security screen can list devices
+    // separately and revoke one without touching the others.
+    const session = await createSession(user.id, req);
+
     res.json({
-      token: signToken({ sub: user.id, email: user.email }),
+      token: signToken({ sub: user.id, email: user.email, sid: session.id }),
       user: publicUser(user),
     });
   })

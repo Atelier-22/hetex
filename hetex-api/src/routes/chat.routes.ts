@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { db, schema } from "../db";
 import { requireAuth, asyncHandler } from "../auth/middleware";
 import { webSearch } from "../tools/web-search.tool";
@@ -73,6 +74,22 @@ async function saveAttachmentsToLibrary(
       conversationId,
     });
   }
+}
+
+/**
+ * With chat history off, the conversation still has to exist while the turn is
+ * running — the model needs the message, and the reply has to be written
+ * somewhere before it is streamed. It is removed immediately afterwards, taking
+ * its messages and attachments with it via ON DELETE CASCADE.
+ *
+ * The alternative, never persisting at all, would mean rewriting the whole
+ * request path around an in-memory conversation for one setting. Deleting after
+ * the fact leaves nothing behind either way.
+ */
+async function discardConversation(conversationId: string) {
+  await db
+    .delete(schema.conversations)
+    .where(eq(schema.conversations.id, conversationId));
 }
 
 chatRouter.post(
@@ -161,8 +178,14 @@ chatRouter.post(
       );
     }
 
-    const { assistantName, responseStyle, model, memoryEntries } =
-      await getUserPreferences(userId);
+    const {
+      assistantName,
+      responseStyle,
+      model,
+      memoryEntries,
+      customInstructions,
+      chatHistoryEnabled,
+    } = await getUserPreferences(userId);
 
     let webSearchNote = "";
     if (webSearchEnabled) {
@@ -185,8 +208,12 @@ chatRouter.post(
     }
 
     const systemPrompt =
-      getSystemPrompt(assistantName, responseStyle, memoryEntries) +
-      webSearchNote;
+      getSystemPrompt(
+        assistantName,
+        responseStyle,
+        memoryEntries,
+        customInstructions
+      ) + webSearchNote;
 
     const title =
       isFirstMessage && message
@@ -238,6 +265,8 @@ chatRouter.post(
           await saveMessage(conversation.id, "assistant", fullText);
         }
 
+        if (!chatHistoryEnabled) await discardConversation(conversation.id);
+
         if (!clientGone) send("done", {});
       } catch (err) {
         if (!clientGone) {
@@ -272,10 +301,13 @@ chatRouter.post(
       await saveMessage(conversation.id, "assistant", fullText);
     }
 
+    if (!chatHistoryEnabled) await discardConversation(conversation.id);
+
     res.json({
       conversationId: conversation.id,
       title,
       reply: fullText,
+      ...(chatHistoryEnabled ? {} : { retained: false }),
       ...(streamError ? { warning: streamError } : {}),
     });
   })

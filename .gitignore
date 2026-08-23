@@ -1,0 +1,52 @@
+# --- Secrets: never commit these ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.mobileprovision
+
+# --- Dependencies ---
+node_modules/
+
+# --- Next.js (hetex-ai) ---
+.next/
+out/
+next-env.d.ts
+
+# --- Expo / React Native (hetex-mobile) ---
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+.kotlin/
+*.orig.*
+/hetex-mobile/ios/
+/hetex-mobile/android/
+
+# --- Local database & uploads ---
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+uploads/
+
+# --- Build / tooling output ---
+*.tsbuildinfo
+.deep-copilot/
+.vercel/
+coverage/
+
+# --- Logs ---
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db

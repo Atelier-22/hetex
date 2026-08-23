@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #f7faf9;
+  --bg-secondary: #ffffff;
+  --bg-sidebar: #f0f5f3;
+  --text-primary: #0b1512;
+  --text-secondary: #5b6a66;
+  --border-subtle: #e2e9e6;
+  --accent-green: #14b366;
+  --accent-blue: #3178f5;
+}
+
+.dark {
+  --bg-primary: #0a0f0d;
+  --bg-secondary: #101613;
+  --bg-sidebar: #0d1311;
+  --text-primary: #eef4f1;
+  --text-secondary: #9caaa5;
+  --border-subtle: #1d2521;
+  --accent-green: #37cf80;
+  --accent-blue: #589fff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.prose-hetex pre {
+  background-color: rgba(0, 0, 0, 0.04);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.dark .prose-hetex pre {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.prose-hetex code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+}

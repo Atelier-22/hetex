@@ -21,7 +21,6 @@ import {
   X,
   ChevronRight,
   User,
-  LayoutDashboard,
 } from "lucide-react";
 import { HetexIcon, HetexLockup } from "./logo";
 import { apiFetch } from "@/lib/api-client";
@@ -57,7 +56,6 @@ export function Sidebar() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -90,15 +88,6 @@ export function Sidebar() {
   }, [session]);
 
   useEffect(load, [load, pathname]);
-
-  // The link is hidden for everyone else, but that is presentation only — the
-  // page and the API both check server-side.
-  useEffect(() => {
-    if (!session) return;
-    apiFetch<{ isAdmin: boolean }>("/admin/me")
-      .then((r) => setIsAdmin(r.isAdmin))
-      .catch(() => setIsAdmin(false));
-  }, [session]);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -362,21 +351,6 @@ export function Sidebar() {
             {!collapsed && label}
           </Link>
         ))}
-
-        {isAdmin && (
-          <Link
-            href="/admin"
-            title="Admin"
-            className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-              pathname === "/admin"
-                ? "bg-accent-soft"
-                : "text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5"
-            } ${collapsed ? "justify-center" : ""}`}
-          >
-            <LayoutDashboard size={16} />
-            {!collapsed && "Admin"}
-          </Link>
-        )}
 
         <button
           onClick={() => openSettings()}

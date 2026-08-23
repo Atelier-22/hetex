@@ -1,17 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import {
-  RefreshCw,
-  Users,
-  MessageSquare,
-  ShieldCheck,
-  AlertCircle,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { RefreshCw, LogOut, ShieldCheck } from "lucide-react";
 import { StatTile, MiniBars, FeedbackMeter, ShareBars } from "./charts";
-import { apiFetch } from "@/lib/api-client";
+import { HetexIcon } from "../logo";
 
-type Overview = {
+export type Overview = {
   users: {
     total: number;
     newToday: number;
@@ -38,16 +33,11 @@ type Overview = {
   };
   privacy: { memoryEnabled: number; chatHistoryDisabled: number };
   tiers: { value: string; label: string; users: number }[];
-  series: {
-    day: string;
-    signups: number;
-    messages: number;
-    signIns: number;
-  }[];
+  series: { day: string; signups: number; messages: number; signIns: number }[];
   generatedAt: string;
 };
 
-type AdminUser = {
+export type AdminUser = {
   id: string;
   email: string;
   displayName: string | null;
@@ -58,84 +48,70 @@ type AdminUser = {
   lastActiveAt: string | null;
 };
 
-export function AdminDashboard() {
-  const [data, setData] = useState<Overview | null>(null);
-  const [users, setUsers] = useState<AdminUser[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+/**
+ * Presentational only — the server fetched everything with the admin cookie
+ * and handed it down. Nothing here reads a token or calls the API on its own.
+ */
+export function AdminDashboard({
+  overview: data,
+  users,
+}: {
+  overview: Overview;
+  users: AdminUser[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [signingOut, setSigningOut] = useState(false);
 
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const [overview, list] = await Promise.all([
-        apiFetch<Overview>("/admin/overview"),
-        apiFetch<AdminUser[]>("/admin/users?limit=25"),
-      ]);
-      setData(overview);
-      setUsers(list);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load");
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (error) {
-    return (
-      <div className="p-8">
-        <p className="text-sm text-hetex-red-500">{error}</p>
-      </div>
-    );
-  }
-
-  if (!data || !users) {
-    return (
-      <div className="space-y-4 p-6 md:p-8">
-        <div className="h-8 w-48 animate-pulse rounded bg-black/5 dark:bg-white/5" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-24 animate-pulse rounded-xl bg-black/5 dark:bg-white/5"
-            />
-          ))}
-        </div>
-        <div className="h-48 animate-pulse rounded-xl bg-black/5 dark:bg-white/5" />
-      </div>
-    );
+  async function signOut() {
+    setSigningOut(true);
+    await fetch("/api/admin-session", { method: "DELETE" });
+    router.replace("/admin/login");
+    router.refresh();
   }
 
   return (
-    <div className="h-full overflow-y-auto px-5 py-6 md:px-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Overview</h1>
-            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-              Updated{" "}
-              {new Date(data.generatedAt).toLocaleTimeString(undefined, {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </p>
+    <div className="min-h-dvh bg-[var(--bg-primary)]">
+      {/* Its own header. No sidebar, nothing from the chat app. */}
+      <header className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-primary)]/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <HetexIcon size={26} />
+            <div>
+              <p className="text-sm font-semibold leading-tight">Hetex Admin</p>
+              <p className="text-[11px] leading-tight text-[var(--text-secondary)]">
+                Updated{" "}
+                {new Date(data.generatedAt).toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
           </div>
-          <button
-            onClick={load}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/5"
-          >
-            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
-            Refresh
-          </button>
-        </div>
 
-        {/* Headline numbers */}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => startTransition(() => router.refresh())}
+              disabled={pending}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/5"
+            >
+              <RefreshCw size={13} className={pending ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+            <button
+              onClick={signOut}
+              disabled={signingOut}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/5"
+            >
+              <LogOut size={13} />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-5 py-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatTile
             label="Total accounts"
             value={data.users.total}
@@ -162,7 +138,6 @@ export function AdminDashboard() {
           />
         </div>
 
-        {/* Trends — small multiples, each on its own scale */}
         <h2 className="mb-3 mt-8 text-sm font-semibold">Last 14 days</h2>
         <div className="grid gap-3 lg:grid-cols-3">
           <MiniBars
@@ -182,7 +157,6 @@ export function AdminDashboard() {
           />
         </div>
 
-        {/* Quality and adoption */}
         <h2 className="mb-3 mt-8 text-sm font-semibold">
           How it&apos;s being received
         </h2>
@@ -192,7 +166,10 @@ export function AdminDashboard() {
             down={data.feedback.down}
             positiveRate={data.feedback.positiveRate}
           />
-          <ShareBars title="Model in use" rows={data.tiers.map((t) => ({ label: t.label, value: t.users }))} />
+          <ShareBars
+            title="Model in use"
+            rows={data.tiers.map((t) => ({ label: t.label, value: t.users }))}
+          />
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4">
             <h3 className="text-sm font-medium">Usage</h3>
             <dl className="mt-3 flex flex-col gap-2 text-xs">
@@ -211,7 +188,6 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        {/* Privacy posture */}
         <h2 className="mb-3 mt-8 text-sm font-semibold">Privacy choices</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <StatTile
@@ -226,10 +202,9 @@ export function AdminDashboard() {
           />
         </div>
 
-        {/* Recent accounts */}
         <h2 className="mb-3 mt-8 text-sm font-semibold">Recent accounts</h2>
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="w-full min-w-[36rem] text-left text-sm">
+          <table className="w-full min-w-[34rem] text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--border-subtle)] text-xs text-[var(--text-secondary)]">
                 <th className="px-4 py-2.5 font-medium">Account</th>
@@ -278,20 +253,19 @@ export function AdminDashboard() {
           </table>
         </div>
 
-        <div className="mb-6 mt-6 flex items-start gap-2.5 rounded-xl border border-[var(--border-subtle)] px-4 py-3">
+        <div className="mb-8 mt-6 flex items-start gap-2.5 rounded-xl border border-[var(--border-subtle)] px-4 py-3">
           <ShieldCheck
             size={15}
             className="mt-0.5 shrink-0 text-[var(--text-secondary)]"
           />
           <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
-            This dashboard shows counts and trends only. It deliberately does not
-            show message contents or conversation titles — titles are generated
-            from what people write, so listing them would expose it. The privacy
-            page tells users their conversations are not read, and this keeps
-            that true.
+            Counts and trends only. Message contents and conversation titles are
+            deliberately absent — titles are generated from what people write,
+            so listing them would expose it, and the privacy page tells users
+            their conversations are not read.
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -300,7 +274,7 @@ function Line({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-[var(--text-secondary)]">{label}</dt>
-      <dd className="tabular-nums font-medium">{value}</dd>
+      <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
 }

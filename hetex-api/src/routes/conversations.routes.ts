@@ -12,8 +12,19 @@ conversationsRouter.get(
   asyncHandler(async (req, res) => {
     const conversations = await db.query.conversations.findMany({
       where: eq(schema.conversations.userId, req.userId!),
-      orderBy: [desc(schema.conversations.updatedAt)],
-      columns: { id: true, title: true, updatedAt: true, projectId: true },
+      // Pinned first, then most recently active. Ordering here rather than in
+      // the client keeps every caller — web, mobile, future ones — consistent.
+      orderBy: [
+        desc(schema.conversations.pinned),
+        desc(schema.conversations.updatedAt),
+      ],
+      columns: {
+        id: true,
+        title: true,
+        updatedAt: true,
+        projectId: true,
+        pinned: true,
+      },
     });
     res.json(conversations);
   })
@@ -42,14 +53,26 @@ conversationsRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {
     const title = typeof req.body?.title === "string" ? req.body.title : null;
-    if (!title?.trim()) {
-      res.status(400).json({ error: "A title is required" });
+    const pinned =
+      typeof req.body?.pinned === "boolean" ? req.body.pinned : undefined;
+
+    if (title !== null && !title.trim()) {
+      res.status(400).json({ error: "A title cannot be empty" });
+      return;
+    }
+    if (title === null && pinned === undefined) {
+      res.status(400).json({ error: "Nothing to update" });
       return;
     }
 
     const updated = await db
       .update(schema.conversations)
-      .set({ title: title.trim(), updatedAt: new Date() })
+      .set({
+        ...(title ? { title: title.trim() } : {}),
+        ...(pinned !== undefined ? { pinned } : {}),
+        // Pinning shouldn't reorder the list as if the chat had new activity.
+        ...(title ? { updatedAt: new Date() } : {}),
+      })
       .where(
         and(
           eq(schema.conversations.id, req.params.id),

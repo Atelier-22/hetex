@@ -12,6 +12,7 @@ import {
   Square,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { usePreferences } from "../preferences";
 
 type Feedback = "up" | "down" | null;
 
@@ -26,6 +27,7 @@ export function MessageActions({
   messageId?: string;
   conversationId?: string;
 }) {
+  const { prefs } = usePreferences();
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [speaking, setSpeaking] = useState(false);
@@ -86,6 +88,17 @@ export function MessageActions({
       return;
     }
     const utterance = new SpeechSynthesisUtterance(content);
+
+    // A saved voice may not exist on this device — voices are installed per
+    // machine, so falling through to the browser default is the right
+    // behaviour rather than failing to speak at all.
+    if (prefs.voiceName) {
+      const voice = window.speechSynthesis
+        .getVoices()
+        .find((v) => v.name === prefs.voiceName);
+      if (voice) utterance.voice = voice;
+    }
+
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     window.speechSynthesis.speak(utterance);
@@ -104,7 +117,7 @@ export function MessageActions({
       <button
         onClick={() => handleFeedback("up")}
         title="Good response"
-        className={`${btn} ${feedback === "up" ? "text-hetex-green-500" : ""}`}
+        className={`${btn} ${feedback === "up" ? "text-accent" : ""}`}
       >
         <ThumbsUp size={14} />
       </button>

@@ -161,7 +161,7 @@ chatRouter.post(
       );
     }
 
-    const { assistantName, responseStyle, memoryEntries } =
+    const { assistantName, responseStyle, model, memoryEntries } =
       await getUserPreferences(userId);
 
     let webSearchNote = "";
@@ -221,6 +221,7 @@ chatRouter.post(
       try {
         for await (const chunk of provider.streamCompletion(history, {
           systemPrompt,
+          model,
         })) {
           if (clientGone) break;
           if (chunk.type === "text" && chunk.text) {
@@ -256,6 +257,7 @@ chatRouter.post(
 
     for await (const chunk of provider.streamCompletion(history, {
       systemPrompt,
+      model,
     })) {
       if (chunk.type === "text" && chunk.text) fullText += chunk.text;
       else if (chunk.type === "error") streamError = chunk.error ?? "Generation failed";

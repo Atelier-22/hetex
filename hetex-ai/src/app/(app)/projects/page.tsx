@@ -49,7 +49,7 @@ export default function ProjectsPage() {
           <h1 className="text-2xl font-semibold">Projects</h1>
           <button
             onClick={() => setCreating(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-hetex-green-500 to-hetex-blue-500 px-3 py-2 text-sm font-medium text-white"
+            className="flex items-center gap-1.5 rounded-lg bg-accent-gradient px-3 py-2 text-sm font-medium text-white"
           >
             <Plus size={15} /> New project
           </button>
@@ -69,11 +69,11 @@ export default function ProjectsPage() {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && createProject()}
               placeholder="Project name"
-              className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm outline-none focus:border-hetex-green-500"
+              className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm outline-none focus-accent"
             />
             <button
               onClick={createProject}
-              className="rounded-lg bg-hetex-green-500 px-4 py-2 text-sm font-medium text-white"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
             >
               Create
             </button>
@@ -94,7 +94,7 @@ export default function ProjectsPage() {
               className="rounded-xl border border-[var(--border-subtle)] p-4"
             >
               <div className="flex items-center gap-2">
-                <FolderKanban size={16} className="text-hetex-green-500" />
+                <FolderKanban size={16} className="text-accent" />
                 <span className="font-medium">{p.name}</span>
               </div>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">

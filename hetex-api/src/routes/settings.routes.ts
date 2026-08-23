@@ -8,12 +8,25 @@ export const settingsRouter = Router();
 
 settingsRouter.use(requireAuth);
 
+// Models the user is allowed to pick. Anything outside this list is rejected
+// rather than passed through to the provider — an arbitrary string here would
+// become a 400 from Anthropic at send time, long after the mistake was made.
+export const ALLOWED_MODELS = [
+  "claude-sonnet-4-6",
+  "claude-opus-5",
+] as const;
+
 const patchSchema = z.object({
   theme: z.enum(["system", "light", "dark"]).optional(),
+  accentColor: z.enum(["green", "blue", "violet", "amber", "rose"]).optional(),
+  textSize: z.enum(["small", "medium", "large"]).optional(),
   assistantName: z.string().min(1).max(80).optional(),
   responseStyle: z.enum(["concise", "balanced", "detailed"]).optional(),
+  model: z.enum(ALLOWED_MODELS).optional(),
   memoryEnabled: z.boolean().optional(),
   enterToSend: z.boolean().optional(),
+  dictationEnabled: z.boolean().optional(),
+  voiceName: z.string().max(120).nullable().optional(),
 });
 
 settingsRouter.get(

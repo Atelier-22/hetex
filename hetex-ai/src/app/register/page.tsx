@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { HetexLogo } from "@/components/logo";
 import { API_BASE_URL } from "@/lib/api";
 
 export default function RegisterPage() {
@@ -60,9 +60,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white">
-            <Sparkles size={20} />
-          </span>
+          <HetexLogo size={56} priority />
           <h1 className="text-xl font-semibold">Create your Hetex AI account</h1>
         </div>
 
@@ -72,7 +70,7 @@ export default function RegisterPage() {
             placeholder="Name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-sm outline-none focus:border-hetex-green-500"
+            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-sm outline-none focus-accent"
           />
           <input
             type="email"
@@ -80,7 +78,7 @@ export default function RegisterPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-sm outline-none focus:border-hetex-green-500"
+            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-sm outline-none focus-accent"
           />
           <input
             type="password"
@@ -89,13 +87,13 @@ export default function RegisterPage() {
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-sm outline-none focus:border-hetex-green-500"
+            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-sm outline-none focus-accent"
           />
           {error && <p className="text-sm text-hetex-red-500">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-gradient-to-r from-hetex-green-500 to-hetex-blue-500 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+            className="w-full rounded-lg bg-accent-gradient py-2.5 text-sm font-medium text-white disabled:opacity-60"
           >
             {loading ? "Creating account…" : "Create account"}
           </button>
@@ -103,7 +101,7 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">
           Already have an account?{" "}
-          <Link href="/login" className="text-hetex-green-600 font-medium">
+          <Link href="/login" className="text-accent font-medium">
             Sign in
           </Link>
         </p>

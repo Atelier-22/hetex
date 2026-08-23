@@ -130,6 +130,9 @@ export async function getUserPreferences(userId: string) {
   return {
     assistantName: settings?.assistantName ?? "Hetex AI",
     responseStyle: settings?.responseStyle ?? "balanced",
+    // Undefined means "whatever the server is configured with", so an account
+    // that has never touched the setting follows ANTHROPIC_MODEL.
+    model: settings?.model || undefined,
     memoryEntries,
   };
 }

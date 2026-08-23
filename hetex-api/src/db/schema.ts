@@ -43,10 +43,18 @@ export const userSettings = pgTable("user_settings", {
     .unique()
     .references(() => users.id, { onDelete: "cascade" }),
   theme: text("theme").notNull().default("system"),
+  accentColor: text("accent_color").notNull().default("green"),
+  textSize: text("text_size").notNull().default("medium"),
   assistantName: text("assistant_name").notNull().default("Hetex AI"),
   responseStyle: text("response_style").notNull().default("balanced"),
+  // "Higher intelligence" — a more capable, more expensive model per request.
+  model: text("model").notNull().default("claude-sonnet-4-6"),
   memoryEnabled: boolean("memory_enabled").notNull().default(false),
   enterToSend: boolean("enter_to_send").notNull().default(true),
+  dictationEnabled: boolean("dictation_enabled").notNull().default(true),
+  // Browser speech-synthesis voice name for Read Aloud. Null means the
+  // browser's default, which is all most people ever need.
+  voiceName: text("voice_name"),
   updatedAt: updatedAt(),
 });
 
@@ -71,6 +79,7 @@ export const conversations = pgTable("conversations", {
   }),
   title: text("title").notNull().default("New Chat"),
   model: text("model").notNull().default("claude-sonnet-4-6"),
+  pinned: boolean("pinned").notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

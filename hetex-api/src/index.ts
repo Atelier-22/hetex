@@ -6,6 +6,7 @@ import { env, corsOrigins, isProduction } from "./env";
 import { db, pool } from "./db";
 import { getProvider } from "./ai";
 import { authRouter } from "./routes/auth.routes";
+import { accountRouter } from "./routes/account.routes";
 import { chatRouter } from "./routes/chat.routes";
 import { conversationsRouter } from "./routes/conversations.routes";
 import { projectsRouter } from "./routes/projects.routes";
@@ -58,6 +59,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/auth", authRouter);
+app.use("/account", accountRouter);
 app.use("/chat", chatRouter);
 app.use("/conversations", conversationsRouter);
 app.use("/projects", projectsRouter);

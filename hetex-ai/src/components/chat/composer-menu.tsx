@@ -92,7 +92,7 @@ export function ComposerMenu({
                   <FolderKanban size={15} className="text-[var(--text-secondary)]" />
                   Add to project
                   {selectedProject && (
-                    <span className="ml-auto truncate text-xs text-hetex-green-600 dark:text-hetex-green-400">
+                    <span className="ml-auto truncate text-xs text-accent">
                       {selectedProject.name}
                     </span>
                   )}
@@ -108,7 +108,7 @@ export function ComposerMenu({
                 <Globe size={15} className="text-[var(--text-secondary)]" />
                 Web search
                 {webSearchEnabled && (
-                  <Check size={14} className="ml-auto text-hetex-green-500" />
+                  <Check size={14} className="ml-auto text-accent" />
                 )}
               </button>
             </>

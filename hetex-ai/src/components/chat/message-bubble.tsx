@@ -34,7 +34,7 @@ export function MessageBubble({
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? "bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white"
+            ? "bg-accent-gradient text-white"
             : "bg-[var(--bg-secondary)] border border-[var(--border-subtle)]"
         }`}
       >

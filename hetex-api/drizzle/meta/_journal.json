@@ -8,6 +8,13 @@
       "when": 1787488665329,
       "tag": "0000_lying_sage",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787497025381,
+      "tag": "0001_colorful_multiple_man",
+      "breakpoints": true
     }
   ]
 }

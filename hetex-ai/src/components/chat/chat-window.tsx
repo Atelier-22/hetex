@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Send,
   Square,
-  Sparkles,
   Mic,
   MicOff,
   Trash2,
@@ -17,6 +16,8 @@ import {
 } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ComposerMenu } from "./composer-menu";
+import { HetexLogo } from "../logo";
+import { usePreferences } from "../preferences";
 import { apiFetch, apiStream } from "@/lib/api-client";
 
 type Message = {
@@ -55,9 +56,10 @@ export function ChatWindow({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
+  const { prefs } = usePreferences();
+  const enterToSend = prefs.enterToSend;
   const [isListening, setIsListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
-  const [enterToSend, setEnterToSend] = useState(true);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -104,11 +106,10 @@ export function ChatWindow({
     setMicSupported(Boolean(SpeechRecognition));
   }, []);
 
-  useEffect(() => {
-    apiFetch<{ enterToSend?: boolean }>("/settings")
-      .then((data) => setEnterToSend(data.enterToSend ?? true))
-      .catch(() => {});
-  }, []);
+  // Dictation is opt-out in settings, and only offered where the browser can
+  // actually do it — Chrome and Edge have Web Speech recognition, Firefox
+  // does not.
+  const showMic = micSupported && prefs.dictationEnabled;
 
   function toggleListening() {
     const SpeechRecognition =
@@ -358,9 +359,7 @@ export function ChatWindow({
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 pt-20 text-center text-[var(--text-secondary)]">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white">
-                <Sparkles size={22} />
-              </span>
+              <HetexLogo size={72} priority />
               <p className="text-lg font-medium text-[var(--text-primary)]">
                 What can I help you with?
               </p>
@@ -372,7 +371,7 @@ export function ChatWindow({
                       setInput(s);
                       textareaRef.current?.focus();
                     }}
-                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors hover:border-hetex-green-500"
+                    className="hover:border-accent rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors"
                   >
                     {s}
                   </button>
@@ -429,12 +428,12 @@ export function ChatWindow({
           {(pendingFiles.length > 0 || webSearchEnabled || selectedProject) && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
               {selectedProject && (
-                <span className="flex items-center gap-1 rounded-full bg-hetex-green-100 px-2.5 py-1 text-xs text-hetex-green-800 dark:bg-white/10 dark:text-white">
+                <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs">
                   in {selectedProject.name}
                 </span>
               )}
               {webSearchEnabled && (
-                <span className="flex items-center gap-1 rounded-full bg-hetex-blue-100 px-2.5 py-1 text-xs text-hetex-blue-800 dark:bg-white/10 dark:text-white">
+                <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs">
                   <Globe size={11} /> Web search on
                 </span>
               )}
@@ -474,7 +473,7 @@ export function ChatWindow({
               onSelectProject={setSelectedProject}
               showProjectPicker={!conversationId}
             />
-            {micSupported && (
+            {showMic && (
               <button
                 onClick={toggleListening}
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${
@@ -504,7 +503,7 @@ export function ChatWindow({
                   : "Message Hetex AI…"
               }
               rows={1}
-              className="max-h-[200px] flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-hetex-green-500"
+              className="max-h-[200px] flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3 text-sm outline-none focus-accent"
             />
             {isStreaming ? (
               <button
@@ -518,7 +517,7 @@ export function ChatWindow({
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() && pendingFiles.length === 0}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-hetex-green-500 to-hetex-blue-500 text-white disabled:opacity-40"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-gradient text-white disabled:opacity-40"
                 aria-label="Send message"
               >
                 <Send size={16} />

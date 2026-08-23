@@ -9,8 +9,16 @@
   --text-primary: #0b1512;
   --text-secondary: #5b6a66;
   --border-subtle: #e2e9e6;
-  --accent-green: #14b366;
-  --accent-blue: #3178f5;
+
+  /* Green is the Hetex identity and the default. The accent set below is what
+     every branded surface reads from, so a preference change moves all of them
+     together instead of leaving half the UI on the old colour. */
+  --accent-from: #14b366;
+  --accent-to: #3178f5;
+  --accent-solid: #14b366;
+  --accent-strong: #0a9153;
+  --accent-soft: #d6fae3;
+  --accent-on-soft: #0b5b3a;
 }
 
 .dark {
@@ -20,8 +28,99 @@
   --text-primary: #eef4f1;
   --text-secondary: #9caaa5;
   --border-subtle: #1d2521;
-  --accent-green: #37cf80;
-  --accent-blue: #589fff;
+
+  --accent-from: #37cf80;
+  --accent-to: #589fff;
+  --accent-solid: #37cf80;
+  --accent-strong: #72e6a9;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-on-soft: #ffffff;
+}
+
+/* --- Accent choices ------------------------------------------------------ */
+/* Green stays the default and the brand. The others exist because people work
+   in these for hours; forcing one hue on everyone is a comfort problem, not a
+   branding win. */
+
+[data-accent="blue"] {
+  --accent-from: #3178f5;
+  --accent-to: #8ec2ff;
+  --accent-solid: #3178f5;
+  --accent-strong: #1f5aeb;
+  --accent-soft: #d9eaff;
+  --accent-on-soft: #1c3aa8;
+}
+.dark[data-accent="blue"] {
+  --accent-from: #589fff;
+  --accent-to: #bcdaff;
+  --accent-solid: #589fff;
+  --accent-strong: #8ec2ff;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-on-soft: #ffffff;
+}
+
+[data-accent="violet"] {
+  --accent-from: #7c5cf0;
+  --accent-to: #3178f5;
+  --accent-solid: #7c5cf0;
+  --accent-strong: #6540e0;
+  --accent-soft: #e9e3fe;
+  --accent-on-soft: #3f2b8c;
+}
+.dark[data-accent="violet"] {
+  --accent-from: #a48bff;
+  --accent-to: #589fff;
+  --accent-solid: #a48bff;
+  --accent-strong: #c0aeff;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-on-soft: #ffffff;
+}
+
+[data-accent="amber"] {
+  --accent-from: #f5a91e;
+  --accent-to: #14b366;
+  --accent-solid: #d98c05;
+  --accent-strong: #b87304;
+  --accent-soft: #fdf0d5;
+  --accent-on-soft: #6b4302;
+}
+.dark[data-accent="amber"] {
+  --accent-from: #f5bb1e;
+  --accent-to: #37cf80;
+  --accent-solid: #f5bb1e;
+  --accent-strong: #ffd166;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-on-soft: #ffffff;
+}
+
+[data-accent="rose"] {
+  --accent-from: #ef4d7a;
+  --accent-to: #7c5cf0;
+  --accent-solid: #e0245e;
+  --accent-strong: #c01a4d;
+  --accent-soft: #fde0e8;
+  --accent-on-soft: #8c1236;
+}
+.dark[data-accent="rose"] {
+  --accent-from: #ff7096;
+  --accent-to: #a48bff;
+  --accent-solid: #ff7096;
+  --accent-strong: #ff9db8;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-on-soft: #ffffff;
+}
+
+/* --- Text size ----------------------------------------------------------- */
+/* Tailwind sizes are all rem, so moving the root size scales the whole
+   interface proportionally rather than just paragraph text. */
+html {
+  font-size: 16px;
+}
+html[data-text-size="small"] {
+  font-size: 14px;
+}
+html[data-text-size="large"] {
+  font-size: 18px;
 }
 
 * {
@@ -33,6 +132,55 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* --- Accent utilities ---------------------------------------------------- */
+
+.bg-accent-gradient {
+  background-image: linear-gradient(
+    to bottom right,
+    var(--accent-from),
+    var(--accent-to)
+  );
+}
+
+.bg-accent {
+  background-color: var(--accent-solid);
+}
+
+.text-accent {
+  color: var(--accent-solid);
+}
+
+.border-accent {
+  border-color: var(--accent-solid);
+}
+
+.focus-accent:focus,
+.focus-accent:focus-visible {
+  border-color: var(--accent-solid);
+  outline: none;
+}
+
+.focus-within-accent:focus-within {
+  border-color: var(--accent-solid);
+}
+
+.bg-accent-soft {
+  background-color: var(--accent-soft);
+  color: var(--accent-on-soft);
+}
+
+/* Respect a system-level request for less motion. The typing indicator and the
+   sidebar width transition are decorative; nobody needs them. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .prose-hetex pre {
@@ -49,4 +197,34 @@ body {
 .prose-hetex code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.875em;
+}
+
+.prose-hetex p {
+  margin: 0.35rem 0;
+}
+
+.prose-hetex ul,
+.prose-hetex ol {
+  margin: 0.35rem 0;
+  padding-left: 1.25rem;
+}
+
+.prose-hetex ul {
+  list-style: disc;
+}
+
+.prose-hetex ol {
+  list-style: decimal;
+}
+
+.prose-hetex h1,
+.prose-hetex h2,
+.prose-hetex h3 {
+  font-weight: 600;
+  margin: 0.6rem 0 0.3rem;
+}
+
+.prose-hetex a {
+  color: var(--accent-solid);
+  text-decoration: underline;
 }

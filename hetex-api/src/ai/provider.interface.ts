@@ -40,12 +40,30 @@ export interface StreamChunk {
   sources?: WebSource[];
 }
 
+/**
+ * What a provider can actually do.
+ *
+ * Providers differ in more than quality — one may not accept images at all, or
+ * have no search tool. Declaring it here lets the chat route adapt and tell the
+ * user, instead of silently dropping an attachment or promising a search that
+ * cannot happen.
+ */
+export interface ProviderCapabilities {
+  webSearch: boolean;
+  images: boolean;
+}
+
 export interface AIProvider {
   /** Unique id used in the model registry, e.g. "anthropic" */
   readonly id: string;
 
   /** Human-readable name for UI display */
   readonly displayName: string;
+
+  readonly capabilities: ProviderCapabilities;
+
+  /** Models this provider serves, in the order they should be offered. */
+  readonly models: { id: string; label: string; description: string }[];
 
   /** Whether this provider is currently usable (e.g. API key present) */
   isConfigured(): boolean;

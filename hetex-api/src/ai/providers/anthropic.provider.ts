@@ -29,7 +29,27 @@ function isSupportedImageType(
 
 export class AnthropicProvider implements AIProvider {
   readonly id = "anthropic";
-  readonly displayName = "Claude (Anthropic)";
+  // Internal only — used in logs, never sent to the client. Model tiers are
+  // presented by capability instead, so the UI names no vendor and equally
+  // never implies Hetex built the model.
+  readonly displayName = "Anthropic";
+
+  readonly capabilities = { webSearch: true, images: true };
+
+  readonly models = [
+    {
+      id: "claude-sonnet-4-6",
+      label: "Standard",
+      description:
+        "Fast and capable, with web search and image understanding. The default.",
+    },
+    {
+      id: "claude-opus-5",
+      label: "Advanced",
+      description:
+        "Stronger on hard reasoning, and several times more expensive per message. Web search and images included.",
+    },
+  ];
 
   private client: Anthropic | null = null;
 

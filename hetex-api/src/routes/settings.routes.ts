@@ -7,6 +7,7 @@ import {
   NOTIFICATION_CATEGORIES,
   withDefaults,
 } from "../services/notifications.service";
+import { availableModels } from "../ai";
 
 const NOTIFICATION_CATEGORY_IDS = NOTIFICATION_CATEGORIES.map((c) => c.id) as [
   string,
@@ -17,13 +18,14 @@ export const settingsRouter = Router();
 
 settingsRouter.use(requireAuth);
 
-// Models the user is allowed to pick. Anything outside this list is rejected
-// rather than passed through to the provider — an arbitrary string here would
-// become a 400 from Anthropic at send time, long after the mistake was made.
-export const ALLOWED_MODELS = [
-  "claude-sonnet-4-6",
-  "claude-opus-5",
-] as const;
+/**
+ * Models the user may pick — derived from whichever providers are configured,
+ * not a hardcoded list. Removing a provider's key removes its models here too,
+ * so Settings can never offer something that fails on send.
+ */
+function allowedModels(): string[] {
+  return availableModels().map((m) => m.value);
+}
 
 const notificationChannel = z.enum(["push", "email", "push_email", "off"]);
 
@@ -33,7 +35,12 @@ const patchSchema = z.object({
   textSize: z.enum(["small", "medium", "large"]).optional(),
   assistantName: z.string().min(1).max(80).optional(),
   responseStyle: z.enum(["concise", "balanced", "detailed"]).optional(),
-  model: z.enum(ALLOWED_MODELS).optional(),
+  model: z
+    .string()
+    .refine((m) => allowedModels().includes(m), {
+      message: "That model isn't available",
+    })
+    .optional(),
   memoryEnabled: z.boolean().optional(),
   enterToSend: z.boolean().optional(),
   dictationEnabled: z.boolean().optional(),
@@ -92,19 +99,7 @@ settingsRouter.get(
         { value: "push_email", label: "Push and email" },
         { value: "off", label: "Off" },
       ],
-      models: [
-        {
-          value: "claude-sonnet-4-6",
-          label: "Sonnet 4.6",
-          description: "Fast and capable. The default.",
-        },
-        {
-          value: "claude-opus-5",
-          label: "Opus 5",
-          description:
-            "Stronger on hard reasoning, and several times more expensive per message.",
-        },
-      ],
+      models: availableModels(),
       // No translations exist yet; the list is what the interface would offer.
       languages: [
         { value: "auto", label: "Auto-detect" },

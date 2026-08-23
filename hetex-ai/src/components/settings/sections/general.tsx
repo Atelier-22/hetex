@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Palette, Type, Languages, Sparkles, Info } from "lucide-react";
+import { Palette, Type, Languages, Info } from "lucide-react";
 import {
   SectionHeader,
   SettingsRow,
@@ -32,8 +32,15 @@ const TEXT_SIZES = [
   { value: "large", label: "Large" },
 ];
 
+type Model = {
+  value: string;
+  label: string;
+  description: string;
+  capabilities: { webSearch: boolean; images: boolean };
+};
+
 type Meta = {
-  models: { value: string; label: string; description: string }[];
+  models: Model[];
   languages: { value: string; label: string }[];
 };
 
@@ -48,8 +55,6 @@ export function GeneralSection() {
 
   const save = (patch: Parameters<typeof update>[0]) => run(() => update(patch));
 
-  const higherIntelligence = prefs.model === "claude-opus-5";
-  const opus = meta?.models.find((m) => m.value === "claude-opus-5");
 
   return (
     <>
@@ -117,22 +122,53 @@ export function GeneralSection() {
         />
       </SettingsRow>
 
-      <SettingsRow
-        label="Higher intelligence"
-        icon={Sparkles}
-        description={
-          opus?.description ??
-          "Uses a stronger, more expensive model for every message."
-        }
+      <SettingsBlock
+        label="Model"
+        description="Which model answers you. Each is better at different things — the trade-offs are stated, not hidden behind a single quality dial."
       >
-        <SettingsToggle
-          label="Higher intelligence"
-          checked={higherIntelligence}
-          onChange={(v) =>
-            save({ model: v ? "claude-opus-5" : "claude-sonnet-4-6" })
-          }
-        />
-      </SettingsRow>
+        <div className="flex flex-col gap-2">
+          {(meta?.models ?? []).map((m) => {
+            const selected = prefs.model === m.value;
+            return (
+              <button
+                key={m.value}
+                onClick={() => save({ model: m.value })}
+                aria-pressed={selected}
+                className={`rounded-xl border px-3.5 py-3 text-left transition-colors ${
+                  selected
+                    ? "border-accent bg-accent-soft"
+                    : "border-[var(--border-subtle)] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+                }`}
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">{m.label}</span>
+                  {selected && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide">
+                      In use
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-[var(--text-secondary)]">
+                  {m.description}
+                </span>
+                <span className="mt-2 flex flex-wrap gap-1.5">
+                  <Capability on={m.capabilities.webSearch} label="Web search" />
+                  <Capability on={m.capabilities.images} label="Reads images" />
+                </span>
+              </button>
+            );
+          })}
+
+          {meta && meta.models.length === 0 && (
+            <p className="text-xs text-[var(--text-secondary)]">
+              No models are configured on the server.
+            </p>
+          )}
+          {!meta && (
+            <div className="h-24 animate-pulse rounded-xl bg-black/5 dark:bg-white/5" />
+          )}
+        </div>
+      </SettingsBlock>
 
       <SettingsRow
         label="Launch at login"
@@ -165,5 +201,20 @@ export function GeneralSection() {
         <p className="mt-4 text-xs text-hetex-red-500">{error}</p>
       )}
     </>
+  );
+}
+
+/** A capability the selected model either has or does not. */
+function Capability({ on, label }: { on: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+        on
+          ? "border-[var(--border-subtle)] text-[var(--text-secondary)]"
+          : "border-transparent bg-black/[0.04] text-[var(--text-secondary)] line-through opacity-70 dark:bg-white/[0.06]"
+      }`}
+    >
+      {label}
+    </span>
   );
 }

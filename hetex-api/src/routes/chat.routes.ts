@@ -11,8 +11,8 @@ import {
   buildMessageHistory,
   getSystemPrompt,
   getUserPreferences,
-  getProvider,
 } from "../services/chat.service";
+import { providerForModel } from "../ai";
 import type { ChatImage } from "../ai";
 import { learnInBackground } from "../services/learning.service";
 
@@ -124,11 +124,22 @@ chatRouter.post(
       return;
     }
 
-    const provider = getProvider();
+    // Preferences are needed before the provider, since the chosen model is
+    // what decides which provider answers.
+    const {
+      assistantName,
+      responseStyle,
+      model,
+      memoryEntries,
+      customInstructions,
+      chatHistoryEnabled,
+    } = await getUserPreferences(userId);
+
+    const provider = providerForModel(model);
     if (!provider.isConfigured()) {
       res.status(503).json({
         error:
-          "No AI provider is configured. Set ANTHROPIC_API_KEY on the server to enable real responses.",
+          "No AI provider is configured on this server, so replies aren't available.",
       });
       return;
     }
@@ -178,15 +189,6 @@ chatRouter.post(
       );
     }
 
-    const {
-      assistantName,
-      responseStyle,
-      model,
-      memoryEntries,
-      customInstructions,
-      chatHistoryEnabled,
-    } = await getUserPreferences(userId);
-
     if (webSearchEnabled) await recordUsage(userId, "tool_call");
 
     // The search tool is offered on every message, not only when the composer
@@ -197,14 +199,28 @@ chatRouter.post(
     //
     // The toggle now means "prefer to search", for when the user knows the
     // answer needs looking up and the model might not.
-    const webSearchNote = webSearchEnabled
-      ? `\n\nThe user has explicitly asked you to look this up. Search the web for this message even if you think you know the answer, and cite what you used.`
+    const canSearch = provider.capabilities.webSearch;
+
+    const webSearchNote = !canSearch
+      ? // Without this the model claims live knowledge it does not have. It
+        // must know its own limits for this turn.
+        `\n\nYou cannot search the web on this model. If the answer depends on current information, say plainly that you can't look it up here and suggest switching to the Standard model in Settings, rather than guessing.`
+      : webSearchEnabled
+        ? `\n\nThe user has explicitly asked you to look this up. Search the web for this message even if you think you know the answer, and cite what you used.`
+        : "";
+
+    // An image sent to a text-only model would otherwise vanish silently and
+    // the reply would look like the model simply ignored it.
+    const droppedImages =
+      imageAttachments.length > 0 && !provider.capabilities.images;
+    const imageNote = droppedImages
+      ? `\n\nThe user attached an image, but this model cannot see images. Tell them so directly and suggest switching to the Standard model in Settings if they need it looked at.`
       : "";
 
     const history = await buildMessageHistory(conversation.id);
     // Images ride along with the live turn only — they are not replayed into
     // future requests, which would multiply cost on every subsequent message.
-    if (imageAttachments.length > 0 && history.length > 0) {
+    if (imageAttachments.length > 0 && !droppedImages && history.length > 0) {
       const last = history[history.length - 1];
       last.images = imageAttachments.map<ChatImage>((a) => ({
         mediaType: a.mediaType,
@@ -218,7 +234,9 @@ chatRouter.post(
         responseStyle,
         memoryEntries,
         customInstructions
-      ) + webSearchNote;
+      ) +
+      webSearchNote +
+      imageNote;
 
     const title =
       isFirstMessage && message
@@ -254,7 +272,7 @@ chatRouter.post(
         for await (const chunk of provider.streamCompletion(history, {
           systemPrompt,
           model,
-          webSearch: true,
+          webSearch: canSearch,
         })) {
           if (clientGone) break;
           if (chunk.type === "text" && chunk.text) {
@@ -308,7 +326,7 @@ chatRouter.post(
     for await (const chunk of provider.streamCompletion(history, {
       systemPrompt,
       model,
-      webSearch: true,
+      webSearch: canSearch,
     })) {
       if (chunk.type === "text" && chunk.text) fullText += chunk.text;
       else if (chunk.type === "sources" && chunk.sources)

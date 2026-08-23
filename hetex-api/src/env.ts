@@ -22,6 +22,10 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-6"),
 
+  // Optional second provider. Absent means its models simply are not offered.
+  DEEPSEEK_API_KEY: z.string().optional(),
+  DEEPSEEK_BASE_URL: z.string().default("https://api.deepseek.com"),
+
   // Comma-separated list of browser origins allowed to call this API.
   // Native mobile clients send no Origin header and are always allowed.
   CORS_ORIGINS: z.string().default("http://localhost:3000"),

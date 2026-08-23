@@ -7,10 +7,38 @@ import {
   isAdminEmail,
   checkOwnerLogin,
   issueOwnerToken,
+  ownerLoginConfigured,
 } from "../auth/admin";
 import { availableModels } from "../ai";
+import { env } from "../env";
 
 export const adminRouter = Router();
+
+/**
+ * Whether an owner login is configured at all.
+ *
+ * Reports only that the two variables are present and their lengths — never
+ * the values. Without this, "not configured" and "wrong password" produce the
+ * same 401 and there is no way to tell them apart from outside.
+ */
+adminRouter.get("/config-status", (_req, res) => {
+  res.json({
+    ownerLoginConfigured: ownerLoginConfigured(),
+    adminEmailLength: env.ADMIN_EMAIL?.length ?? 0,
+    adminPasswordLength: env.ADMIN_PASSWORD?.length ?? 0,
+    // Surfaces the classic cause: a value pasted with a trailing space or
+    // wrapped in quotes, which is invisible in a dashboard text field.
+    adminEmailHasWhitespace: env.ADMIN_EMAIL
+      ? env.ADMIN_EMAIL !== env.ADMIN_EMAIL.trim()
+      : false,
+    adminPasswordHasWhitespace: env.ADMIN_PASSWORD
+      ? env.ADMIN_PASSWORD !== env.ADMIN_PASSWORD.trim()
+      : false,
+    adminPasswordLooksQuoted: env.ADMIN_PASSWORD
+      ? /^["'].*["']$/.test(env.ADMIN_PASSWORD)
+      : false,
+  });
+});
 
 /**
  * Owner sign-in. Public by necessity — it is the door.

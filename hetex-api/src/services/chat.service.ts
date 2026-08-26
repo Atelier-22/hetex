@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "../db";
 import { getProvider, type ChatMessage } from "../ai";
+import { buildIdentityBlock, type AuthenticatedUser } from "../ai/owner";
 
 const SYSTEM_PROMPT_BASE = (assistantName: string) =>
   `You are ${assistantName}, the assistant inside Hetex AI, a general-purpose AI platform.
@@ -103,12 +104,26 @@ export async function buildMessageHistory(
   }));
 }
 
-export function getSystemPrompt(
-  assistantName: string,
-  responseStyle: string = "balanced",
-  memoryEntries: string[] = [],
-  customInstructions?: string | null
-) {
+/**
+ * `user` must come from the session-derived account record — never from a field
+ * the client can set in the request body. Founder recognition is decided here
+ * and nowhere else, so a claim made inside the conversation cannot grant it.
+ */
+export function getSystemPrompt(params: {
+  assistantName: string;
+  responseStyle?: string;
+  memoryEntries?: string[];
+  customInstructions?: string | null;
+  user: AuthenticatedUser;
+}) {
+  const {
+    assistantName,
+    responseStyle = "balanced",
+    memoryEntries = [],
+    customInstructions,
+    user,
+  } = params;
+
   const styleLine =
     responseStyle === "concise"
       ? "Keep responses concise — get to the point, avoid padding."
@@ -129,12 +144,21 @@ export function getSystemPrompt(
     ? `\n\nThe user has given you these standing instructions. Follow them unless they conflict with the guidance above:\n"""\n${customInstructions.trim()}\n"""`
     : "";
 
-  return `${SYSTEM_PROMPT_BASE(assistantName)}\n\n${styleLine}${memoryBlock}${instructionsBlock}`;
+  return `${buildIdentityBlock(user)}\n\n${SYSTEM_PROMPT_BASE(
+    assistantName
+  )}\n\n${styleLine}${memoryBlock}${instructionsBlock}`;
 }
 
 export async function getUserPreferences(userId: string) {
   const settings = await db.query.userSettings.findFirst({
     where: eq(schema.userSettings.userId, userId),
+  });
+
+  // Read from the account row rather than the request, so identity is whatever
+  // the user actually signed in as.
+  const account = await db.query.users.findFirst({
+    where: eq(schema.users.id, userId),
+    columns: { email: true, displayName: true },
   });
 
   let memoryEntries: string[] = [];
@@ -148,6 +172,10 @@ export async function getUserPreferences(userId: string) {
   }
 
   return {
+    user: {
+      email: account?.email ?? null,
+      displayName: account?.displayName ?? null,
+    } satisfies AuthenticatedUser,
     assistantName: settings?.assistantName ?? "Hetex AI",
     responseStyle: settings?.responseStyle ?? "balanced",
     // Undefined means "whatever the server is configured with", so an account

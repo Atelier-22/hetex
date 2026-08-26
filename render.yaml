@@ -15,9 +15,21 @@ services:
     # --include=dev is required: NODE_ENV=production makes npm skip
     # devDependencies, which is where TypeScript lives. Without it the build has
     # no compiler and falls back to whatever tsc it can find.
-    buildCommand: npm ci --include=dev && npm run build
+    #
+    # download-model.js runs before the compile so the offline fallback model is
+    # on the persistent disk by the time the service boots. It skips the
+    # download when the file is already there, so a redeploy costs nothing, and
+    # it exits 0 on failure rather than taking the whole build down.
+    buildCommand: npm ci --include=dev && node scripts/download-model.js && npm run build
     startCommand: npm start
     healthCheckPath: /health
+    # Renders' filesystem is wiped on every deploy, so the ~2 GB gguf lives on a
+    # disk instead. Note that disks require a paid instance type — on the free
+    # plan this block has to go, and the model is re-downloaded each deploy.
+    disk:
+      name: hetex-models
+      mountPath: /models
+      sizeGB: 5
     envVars:
       - key: NODE_ENV
         value: production
@@ -31,6 +43,8 @@ services:
         value: 30d
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-6
+      - key: LOCAL_MODEL_DIR
+        value: /models
       # Set these two in the Render dashboard after the first deploy:
       #   ANTHROPIC_API_KEY — your key from console.anthropic.com
       #   CORS_ORIGINS      — your Vercel URL, e.g. https://hetex.vercel.app

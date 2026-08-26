@@ -13,7 +13,8 @@ import {
   getUserPreferences,
 } from "../services/chat.service";
 import { providerForModel, resolveModelId } from "../ai";
-import type { ChatImage } from "../ai";
+import type { ChatImage, StreamChunk } from "../ai";
+import { generateLocal, isLocalModelAvailable } from "../ai/local-model";
 import { learnInBackground } from "../services/learning.service";
 
 export const chatRouter = Router();
@@ -26,6 +27,9 @@ export const chatRouter = Router();
  */
 const MAX_LIBRARY_BYTES = 1_500_000; // ~1.5 MB of decoded image data
 const MAX_ATTACHMENT_BYTES = 5_000_000; // ~5 MB, rejected outright above this
+
+const NO_PROVIDER_MESSAGE =
+  "No AI provider is configured on this server, so replies aren't available.";
 
 const attachmentSchema = z.object({
   name: z.string().min(1).max(255),
@@ -92,6 +96,32 @@ async function discardConversation(conversationId: string) {
     .where(eq(schema.conversations.id, conversationId));
 }
 
+/**
+ * Last resort when the hosted provider fails outright.
+ *
+ * Returns null when there is no downloaded model or it cannot answer, so the
+ * caller falls back to reporting the original provider error rather than
+ * swallowing it. The local model sees the same system prompt — including the
+ * verified-identity block — but only the current turn, not the history.
+ */
+async function localFallbackReply(
+  prompt: string,
+  systemPrompt: string
+): Promise<string | null> {
+  if (!prompt.trim() || !isLocalModelAvailable()) return null;
+
+  try {
+    const text = await generateLocal(prompt, systemPrompt);
+    return text.trim() ? text : null;
+  } catch (err) {
+    console.error(
+      "Local fallback failed:",
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
 chatRouter.post(
   "/",
   requireAuth,
@@ -127,6 +157,7 @@ chatRouter.post(
     // Preferences are needed before the provider, since the chosen model is
     // what decides which provider answers.
     const {
+      user,
       assistantName,
       responseStyle,
       model,
@@ -139,7 +170,11 @@ chatRouter.post(
     // the vendor's own identifier, which never leaves the server.
     const provider = providerForModel(model);
     const vendorModel = resolveModelId(model);
-    if (!provider.isConfigured()) {
+
+    // A missing API key is no longer fatal: a downloaded local model answers on
+    // its own. Only when neither exists is there nothing to reply with.
+    const providerUsable = provider.isConfigured();
+    if (!providerUsable && !isLocalModelAvailable()) {
       res.status(503).json({
         error:
           "No AI provider is configured on this server, so replies aren't available.",
@@ -202,7 +237,7 @@ chatRouter.post(
     //
     // The toggle now means "prefer to search", for when the user knows the
     // answer needs looking up and the model might not.
-    const canSearch = provider.capabilities.webSearch;
+    const canSearch = providerUsable && provider.capabilities.webSearch;
 
     const webSearchNote = !canSearch
       ? // Without this the model claims live knowledge it does not have. It
@@ -232,12 +267,13 @@ chatRouter.post(
     }
 
     const systemPrompt =
-      getSystemPrompt(
+      getSystemPrompt({
+        user,
         assistantName,
         responseStyle,
         memoryEntries,
-        customInstructions
-      ) +
+        customInstructions,
+      }) +
       webSearchNote +
       imageNote;
 
@@ -266,17 +302,22 @@ chatRouter.post(
       send("meta", { conversationId: conversation.id, title });
 
       let fullText = "";
+      let providerError: string | null = null;
       let clientGone = false;
       req.on("close", () => {
         clientGone = true;
       });
 
       try {
-        for await (const chunk of provider.streamCompletion(history, {
-          systemPrompt,
-          model: vendorModel,
-          webSearch: canSearch,
-        })) {
+        const stream = providerUsable
+          ? provider.streamCompletion(history, {
+              systemPrompt,
+              model: vendorModel,
+              webSearch: canSearch,
+            })
+          : ([{ type: "error", error: NO_PROVIDER_MESSAGE }] as StreamChunk[]);
+
+        for await (const chunk of stream) {
           if (clientGone) break;
           if (chunk.type === "text" && chunk.text) {
             fullText += chunk.text;
@@ -286,7 +327,25 @@ chatRouter.post(
           } else if (chunk.type === "sources") {
             send("sources", { sources: chunk.sources });
           } else if (chunk.type === "error") {
-            send("error", { message: chunk.error });
+            // Held back rather than sent: the local model may still answer, and
+            // an error the user never needed to see is noise.
+            providerError = chunk.error ?? "Generation failed";
+          }
+        }
+
+        if (providerError && !clientGone) {
+          // Only a turn that produced nothing is worth retrying locally.
+          // Half an answer plus a different model finishing it would read as
+          // one reply that changes voice mid-sentence.
+          const local = fullText.trim()
+            ? null
+            : await localFallbackReply(message, systemPrompt);
+
+          if (local) {
+            fullText = local;
+            send("chunk", { text: local });
+          } else {
+            send("error", { message: providerError });
           }
         }
 
@@ -326,21 +385,31 @@ chatRouter.post(
 
     const collectedSources: { title: string; url: string }[] = [];
 
-    for await (const chunk of provider.streamCompletion(history, {
-      systemPrompt,
-      model: vendorModel,
-      webSearch: canSearch,
-    })) {
-      if (chunk.type === "text" && chunk.text) fullText += chunk.text;
-      else if (chunk.type === "sources" && chunk.sources)
-        collectedSources.push(...chunk.sources);
-      else if (chunk.type === "error")
-        streamError = chunk.error ?? "Generation failed";
+    if (!providerUsable) {
+      streamError = NO_PROVIDER_MESSAGE;
+    } else {
+      for await (const chunk of provider.streamCompletion(history, {
+        systemPrompt,
+        model: vendorModel,
+        webSearch: canSearch,
+      })) {
+        if (chunk.type === "text" && chunk.text) fullText += chunk.text;
+        else if (chunk.type === "sources" && chunk.sources)
+          collectedSources.push(...chunk.sources);
+        else if (chunk.type === "error")
+          streamError = chunk.error ?? "Generation failed";
+      }
     }
 
     if (streamError && !fullText) {
-      res.status(502).json({ error: streamError });
-      return;
+      const local = await localFallbackReply(message, systemPrompt);
+      if (local) {
+        fullText = local;
+        streamError = null;
+      } else {
+        res.status(502).json({ error: streamError });
+        return;
+      }
     }
 
     if (fullText.trim().length > 0) {

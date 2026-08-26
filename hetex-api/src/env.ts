@@ -32,6 +32,11 @@ const envSchema = z.object({
 
   WEB_SEARCH_PROVIDER: z.string().optional(),
 
+  // The offline fallback model. LOCAL_MODEL_DIR may be absolute — on Render it
+  // points at the persistent disk so the file survives a redeploy.
+  LOCAL_MODEL_DIR: z.string().default("models"),
+  LOCAL_MODEL_FILE: z.string().default("Llama-3.2-3B-Instruct-Q4_K_M.gguf"),
+
   // Comma-separated emails granted admin access regardless of stored role.
   // Requires those people to have a Hetex account.
   ADMIN_EMAILS: z.string().default(""),

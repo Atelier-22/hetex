@@ -35,6 +35,11 @@ expo-env.d.ts
 *.sqlite3
 uploads/
 
+# --- Local fallback model (gguf weights, ~2 GB) ---
+models/
+*.gguf
+*.gguf.partial
+
 # --- Build / tooling output ---
 dist/
 *.tsbuildinfo

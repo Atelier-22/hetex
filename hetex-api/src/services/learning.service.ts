@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { eq } from "drizzle-orm";
 import { env } from "../env";
 import { db, schema } from "../db";
+import { generateAI } from "../ai/router";
 
 /**
  * Learning what matters about a user from their conversations.
@@ -98,28 +98,17 @@ export async function learnFromExchange(params: {
 
   const known = existing.map((m) => m.content);
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-
   // A small, cheap model: this is extraction, not reasoning, and it runs after
-  // every exchange.
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 400,
-    system: EXTRACTION_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Already known about this user:\n${
-          known.length ? known.map((k) => `- ${k}`).join("\n") : "(nothing yet)"
-        }\n\nThe exchange:\nUser: ${params.userMessage.slice(0, 3000)}\nAssistant: ${params.assistantMessage.slice(0, 3000)}`,
-      },
-    ],
-  });
-
-  const text = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  // every exchange. The router drops to the local model if the API is down —
+  // this needs no tool calling, and a malformed reply is already handled by
+  // factsFrom returning nothing.
+  const { text } = await generateAI(
+    `Already known about this user:\n${
+      known.length ? known.map((k) => `- ${k}`).join("\n") : "(nothing yet)"
+    }\n\nThe exchange:\nUser: ${params.userMessage.slice(0, 3000)}\nAssistant: ${params.assistantMessage.slice(0, 3000)}`,
+    EXTRACTION_PROMPT,
+    { vendorModel: "claude-haiku-4-5", maxTokens: 400 }
+  );
 
   const fresh = factsFrom(text).filter((f) => !isDuplicate(f, known));
   if (fresh.length === 0) return;

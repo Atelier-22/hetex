@@ -25,14 +25,28 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Ping the API
+        env:
+          # The live hostname, which is a Render resource and has nothing to do
+          # with what this repository calls itself. Renaming the project from
+          # Hetex to Aviel did NOT rename the deployed service, so the default
+          # below is deliberately still the real host.
+          #
+          # To point this somewhere else, set an API_HEALTH_URL repository
+          # variable (Settings -> Secrets and variables -> Actions -> Variables)
+          # rather than editing this file — that way the URL follows the
+          # deployment instead of the code.
+          API_HEALTH_URL: ${{ vars.API_HEALTH_URL || 'https://hetex.onrender.com/health' }}
         run: |
+          echo "pinging $API_HEALTH_URL"
           # --max-time allows for a cold start rather than failing the run when
           # the ping is the request that happens to wake it.
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 \
-            https://aviel.onrender.com/health)
+            "$API_HEALTH_URL")
           echo "health -> $code"
           # A 5xx is worth failing on; anything else means the service answered.
+          # 000 means curl never got a response at all — usually a hostname that
+          # does not resolve, which is exactly what a stale URL here looks like.
           if [ "$code" -ge 500 ] || [ "$code" -eq 000 ]; then
-            echo "::error::API unhealthy (HTTP $code)"
+            echo "::error::API unhealthy or unreachable (HTTP $code) at $API_HEALTH_URL"
             exit 1
           fi

@@ -655,7 +655,7 @@ export function ChatWindow({
         <div className="chat-stack mx-auto flex max-w-3xl flex-col">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center pt-16 text-center text-[var(--text-secondary)] sm:pt-24">
-              <AvielLockup height={52} align="center" priority />
+              <AvielLockup height={88} priority />
               {/* The lockup already carries the strapline, so the greeting
                   below it is the only other line — two headings stacked read
                   as a splash screen rather than a starting point. */}

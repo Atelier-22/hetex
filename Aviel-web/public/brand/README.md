@@ -1,39 +1,41 @@
 # Brand assets
 
-The Aviel wordmark is **drawn as type, not loaded as an image** — see
-`src/components/logo.tsx`. It sets "Aviel" in Cormorant Garamond over the
-`Think · Decide · Grow` strapline, follows the light and dark themes, and stays
-crisp at any size. There is nothing to export and nothing to keep in sync.
+The lockup is **the mark as artwork, with the words set as type beneath it**.
+See `src/components/logo.tsx`.
 
-The five PNG logo and lockup files that used to live here have been removed.
-They were the previous brand's artwork, nothing referenced them once the
-wordmark became type, and leaving them would have meant the old identity
-resurfacing the next time someone reached for a logo file.
+The mark stays a PNG because it is artwork and carries its own colour. The
+"Aviel" wordmark and the `Think · Decide · Grow` strapline are type, which is
+what removed the old light/dark lockup pair — type follows the theme on its
+own, stays crisp at any size, and needs no re-export when the strapline changes.
 
-## What is still an image, and still wrong
-
-These four are the **previous brand's artwork**. They cannot be generated from
-type, because the browser and the operating system need real image files:
-
-| File | Used by | Size |
+| File | Used by | Notes |
 | --- | --- | --- |
-| `favicon.ico` | Browser tab | multi-size ico (16/32/48) |
+| `Aviel-logo-color.png` | Every lockup, the collapsed sidebar, avatars | Icon only, square, transparent. 512×512 or larger |
+| `Aviel-logo-dark.png` | Spare, for a light surface that needs a flat mark | Not currently referenced |
+| `Aviel-logo-white.png` | Spare, for a dark surface that needs a flat mark | Not currently referenced |
+| `favicon.ico` | Browser tab | Multi-size ico (16/32/48) |
 | `apple-touch-icon.png` | iOS home screen | 180×180, no transparency — iOS composites on black |
 | `icon-192.png` | Web app manifest | 192×192 |
 | `icon-512.png` | Web app manifest, install prompt | 512×512 |
 
-Until they are replaced, a browser tab and an installed icon still show the old
-mark. Replacing them is a design task, not a code one: drop in files with these
-exact names and sizes and nothing else needs to change.
+The two old `*-lockup-*.png` files are gone. They had the previous wordmark
+baked into the pixels, so they could not survive the rename — and the lockup no
+longer needs an image, because the words are type now.
 
 `favicon.ico` and `apple-touch-icon.png` are **also served from the site root**,
 because browsers request `/favicon.ico` unconditionally and iOS requests
 `/apple-touch-icon.png`, both ignoring the tags in `layout.tsx` entirely. The
 copies in `public/` and `public/brand/` must match.
 
-## The mark
+## Components
 
-Where a square icon is needed — a collapsed sidebar, an avatar slot —
-`AvielIcon` draws a serif "A" on the accent gradient. It is the one place the
-accent is allowed to carry the brand, because there is no wordmark beside it to
-do that job.
+- `AvielLockup` — mark, then "Aviel", then the strapline. Stacked and centred.
+  `height` sizes the mark and the type scales from it, so one number sets the
+  whole thing. The strapline drops out below ~22px word size rather than
+  rendering as a grey smear.
+- `AvielLockupInline` — mark beside the word, for a header row.
+- `AvielIcon` — the mark alone, where only a square fits.
+
+If the artwork ever fails to load, a drawn fallback appears rather than a blank
+space. It follows the accent colour, because at that point it is interface
+chrome standing in for the brand rather than the brand itself.

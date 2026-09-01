@@ -76,7 +76,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <AvielLockup height={46} align="center" priority />
+          <AvielLockup height={72} priority />
           <h1 className="text-xl font-semibold">Create your Aviel AI account</h1>
         </div>
 

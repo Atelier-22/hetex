@@ -9,7 +9,13 @@ import {
   issueOwnerToken,
   ownerLoginConfigured,
 } from "../auth/admin";
-import { availableModels } from "../ai";
+import { availableModels, providerStatus } from "../ai";
+import { getLocalRuntimeStatus } from "../ai/local-runtime";
+import {
+  getPlatformConfig,
+  platformConfigPatchSchema,
+  savePlatformConfig,
+} from "../settings/platform";
 import { env } from "../env";
 
 export const adminRouter = Router();
@@ -372,5 +378,119 @@ adminRouter.get(
   "/me",
   asyncHandler(async (req, res) => {
     res.json({ isAdmin: true, email: req.userEmail });
+  })
+);
+
+/* -------------------------------------------------------------------------- */
+/* Platform configuration                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The settings an administrator owns.
+ *
+ * Separate from user settings on purpose: nothing here is a personal
+ * preference, and none of it is reachable from the user Settings screen. What
+ * is set here constrains every account — a feature switched off disappears from
+ * every user's Settings as unavailable, and a limit set here is enforced on the
+ * request path regardless of what any client sends.
+ */
+adminRouter.get(
+  "/config",
+  asyncHandler(async (_req, res) => {
+    const config = await getPlatformConfig();
+
+    res.json({
+      config,
+      // Vendor names are admin-visible regardless of the reveal flag: an
+      // operator has to know which service they are paying for.
+      providers: providerStatus({ revealNames: true }),
+      localAI: await getLocalRuntimeStatus(),
+    });
+  })
+);
+
+adminRouter.patch(
+  "/config",
+  asyncHandler(async (req, res) => {
+    const parsed = platformConfigPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      res.status(400).json({
+        error: issue?.message ?? "Invalid configuration",
+        path: issue?.path.join("."),
+      });
+      return;
+    }
+
+    // Image generation cannot be switched on: no provider implements it, and a
+    // flag that enables a button which then fails is worse than a flag that
+    // refuses honestly.
+    if (parsed.data.features?.imageGeneration) {
+      res.status(409).json({
+        error:
+          "Image generation can't be enabled — no image generation provider is implemented on this server.",
+        path: "features.imageGeneration",
+      });
+      return;
+    }
+
+    if (parsed.data.billingConfigured) {
+      res.status(409).json({
+        error:
+          "Billing can't be marked configured — no payment processor is connected.",
+        path: "billingConfigured",
+      });
+      return;
+    }
+
+    res.json({ config: await savePlatformConfig(parsed.data) });
+  })
+);
+
+/** Support reports raised from Help & Support, newest first. */
+adminRouter.get(
+  "/reports",
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+    const rows = await db
+      .select({
+        id: schema.supportReports.id,
+        kind: schema.supportReports.kind,
+        subject: schema.supportReports.subject,
+        body: schema.supportReports.body,
+        status: schema.supportReports.status,
+        createdAt: schema.supportReports.createdAt,
+        userEmail: schema.users.email,
+      })
+      .from(schema.supportReports)
+      .leftJoin(schema.users, eq(schema.supportReports.userId, schema.users.id))
+      .orderBy(desc(schema.supportReports.createdAt))
+      .limit(limit);
+
+    res.json(rows);
+  })
+);
+
+adminRouter.patch(
+  "/reports/:id",
+  asyncHandler(async (req, res) => {
+    const status = req.body?.status;
+    if (status !== "open" && status !== "closed") {
+      res.status(400).json({ error: "Status must be 'open' or 'closed'" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(schema.supportReports)
+      .set({ status })
+      .where(eq(schema.supportReports.id, req.params.id))
+      .returning({ id: schema.supportReports.id, status: schema.supportReports.status });
+
+    if (!updated) {
+      res.status(404).json({ error: "Report not found" });
+      return;
+    }
+    res.json(updated);
   })
 );

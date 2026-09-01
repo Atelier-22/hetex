@@ -37,6 +37,12 @@ const envSchema = z.object({
   LOCAL_MODEL_DIR: z.string().default("models"),
   LOCAL_MODEL_FILE: z.string().default("Llama-3.2-3B-Instruct-Q4_K_M.gguf"),
 
+  // Local AI runtime. An Ollama daemon here means models can be listed,
+  // installed and removed from Settings; without one, the bundled GGUF above is
+  // used and is managed as a file on the host. Never needs an API key, and
+  // nothing sent to it leaves the machine it runs on.
+  OLLAMA_BASE_URL: z.string().default("http://127.0.0.1:11434"),
+
   // Comma-separated emails granted admin access regardless of stored role.
   // Requires those people to have a Hetex account.
   ADMIN_EMAILS: z.string().default(""),

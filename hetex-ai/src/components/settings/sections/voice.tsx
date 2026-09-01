@@ -1,142 +1,415 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mic, Volume2, Play } from "lucide-react";
+import { Mic, Play, Square, Volume2 } from "lucide-react";
 import {
-  SectionHeader,
-  SettingsRow,
-  SettingsToggle,
-  SettingsDropdown,
-  SettingsButton,
+  Callout,
   SaveIndicator,
-  NotWiredBadge,
+  SectionHeader,
+  SegmentedControl,
+  SettingsButton,
+  SettingsCard,
+  SettingsDropdown,
+  SettingsRow,
+  SettingsSlider,
+  SettingsToggle,
+  StatusPill,
 } from "../primitives";
-import { usePreferences } from "../../preferences";
-import { useSave } from "../use-save";
+import { useSection } from "../use-section";
+import { speak, stopSpeaking, useSpeechVoices } from "@/lib/speech";
 
 const DICTATION_LANGS = [
   { value: "en-US", label: "English (US)" },
   { value: "en-GB", label: "English (UK)" },
   { value: "sw-KE", label: "Kiswahili" },
+  { value: "lg-UG", label: "Luganda" },
   { value: "fr-FR", label: "Français" },
   { value: "ar-SA", label: "العربية" },
+  { value: "es-ES", label: "Español" },
+  { value: "pt-BR", label: "Português (BR)" },
+  { value: "de-DE", label: "Deutsch" },
+  { value: "hi-IN", label: "हिन्दी" },
+  { value: "zh-CN", label: "中文" },
 ];
 
 export function VoiceSection() {
-  const { prefs, update } = usePreferences();
-  const { state, error, run } = useSave();
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [sttSupported, setSttSupported] = useState(false);
+  const { values, set, reset, resetting, saveState, error, meta, settings } =
+    useSection("voice");
+  const { voices, ttsSupported, sttSupported } = useSpeechVoices();
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const [previewing, setPreviewing] = useState(false);
+  const [micState, setMicState] = useState<
+    "unknown" | "checking" | "ok" | "denied" | "unsupported"
+  >("unknown");
+  const [micDetail, setMicDetail] = useState<string | null>(null);
 
-    setSttSupported(
-      Boolean(
-        (window as any).SpeechRecognition ||
-          (window as any).webkitSpeechRecognition
-      )
-    );
+  useEffect(() => () => stopSpeaking(), []);
 
-    if (!("speechSynthesis" in window)) return;
-    // Voices load asynchronously — the first call routinely returns an empty
-    // array and the event is the only reliable signal.
-    const read = () => setVoices(window.speechSynthesis.getVoices());
-    read();
-    window.speechSynthesis.addEventListener("voiceschanged", read);
-    return () =>
-      window.speechSynthesis.removeEventListener("voiceschanged", read);
-  }, []);
+  const voiceDisabled = meta?.features?.voice === false;
 
   function preview() {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(
-      "This is how Hetex AI will sound when reading a reply aloud."
+    if (previewing) {
+      stopSpeaking();
+      setPreviewing(false);
+      return;
+    }
+    setPreviewing(true);
+    speak(
+      "This is how Hetex AI will sound when it reads a reply aloud.",
+      values,
+      voices,
+      () => setPreviewing(false),
+      settings.language.voiceOutput
     );
-    const voice = voices.find((v) => v.name === prefs.voiceName);
-    if (voice) u.voice = voice;
-    window.speechSynthesis.speak(u);
+  }
+
+  /**
+   * Actually opens the microphone.
+   *
+   * The only honest way to report whether noise suppression is available: ask
+   * for it and read back what the browser granted. Dictation itself goes
+   * through the Web Speech API, which does not accept constraints — so this
+   * reports on the device, and says so.
+   */
+  async function checkMicrophone() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicState("unsupported");
+      setMicDetail("This browser has no microphone API.");
+      return;
+    }
+
+    setMicState("checking");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          noiseSuppression: values.noiseReduction,
+          echoCancellation: values.noiseReduction,
+          ...(values.audioQuality === "high" ? { sampleRate: 48000 } : {}),
+        },
+      });
+
+      const track = stream.getAudioTracks()[0];
+      const settings = track?.getSettings?.() ?? {};
+      stream.getTracks().forEach((t) => t.stop());
+
+      setMicState("ok");
+      setMicDetail(
+        [
+          track?.label || "Default microphone",
+          settings.noiseSuppression === true
+            ? "noise suppression on"
+            : settings.noiseSuppression === false
+              ? "noise suppression not applied"
+              : null,
+          settings.sampleRate ? `${settings.sampleRate} Hz` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      );
+    } catch (err) {
+      setMicState("denied");
+      setMicDetail(
+        err instanceof Error && err.name === "NotAllowedError"
+          ? "Permission was refused. Allow microphone access for this site in your browser."
+          : "No microphone was available."
+      );
+    }
   }
 
   return (
     <>
       <SectionHeader
         title="Voice"
-        description="Speaking to Hetex, and having it read replies back."
+        description="Speaking to Hetex, and hearing it read a reply back."
+        onReset={reset}
+        resetting={resetting}
       />
 
-      <div className="mb-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 py-3">
-        <NotWiredBadge>No voice mode</NotWiredBadge>
-        <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">
-          Hetex has no live voice conversation mode. What works today uses your
-          browser: dictation types into the composer, and Read Aloud speaks a
-          reply from the actions under it. Both stay on your device — no audio
-          is sent to a server.
-        </p>
+      <div className="mb-3 flex justify-end">
+        <SaveIndicator state={saveState} error={error} />
       </div>
 
-      <div className="flex justify-end pb-1">
-        <SaveIndicator state={state} />
-      </div>
+      <Callout title="Where voice runs">
+        Speech recognition and speech synthesis both run in your browser, using
+        the voices installed on this device. No audio is ever sent to a Hetex
+        server, and none is stored anywhere.
+      </Callout>
 
-      <SettingsRow
-        label="Dictation"
-        icon={Mic}
+      {voiceDisabled && (
+        <Callout tone="warn" title="Voice is unavailable">
+          An administrator has turned voice off for this server.
+        </Callout>
+      )}
+
+      <SettingsCard
+        title="Reading replies aloud"
         description={
-          sttSupported
-            ? "The microphone is always in the composer — there is nothing to switch on."
-            : "Your browser has no speech recognition, so no microphone appears. Chrome and Edge support it; Firefox and Safari do not."
+          ttsSupported
+            ? "Voices come from your device, so this list differs between computers. A saved voice that isn't installed falls back to the default."
+            : undefined
         }
       >
-        <span className="text-sm text-[var(--text-secondary)]">
-          {sttSupported ? "Available" : "Unavailable here"}
-        </span>
-      </SettingsRow>
+        {!ttsSupported && (
+          <SettingsRow
+            label="Read aloud"
+            unavailable="This browser has no speech synthesis, so replies cannot be read aloud here."
+          >
+            <StatusPill tone="off">Unavailable</StatusPill>
+          </SettingsRow>
+        )}
 
-      <SettingsRow
-        label="Dictation language"
-        description="What language you speak when dictating — not what language the interface is in."
-      >
-        <SettingsDropdown
-          label="Dictation language"
-          value={prefs.voiceInputLang ?? "en-US"}
-          disabled={!sttSupported}
-          onChange={(v) => run(() => update({ voiceInputLang: v }))}
-          options={DICTATION_LANGS}
-        />
-      </SettingsRow>
+        <SettingsRow label="Voice" icon={Volume2} hidden={!ttsSupported}>
+          <div className="flex items-center gap-2">
+            <SettingsDropdown
+              label="Voice"
+              value={values.outputVoice ?? ""}
+              disabled={voices.length === 0 || voiceDisabled}
+              onChange={(v) => set({ outputVoice: v || null })}
+              options={[
+                { value: "", label: "Device default" },
+                ...voices.map((v) => ({
+                  value: v.name,
+                  label: `${v.name} (${v.lang})`,
+                })),
+              ]}
+            />
+            <SettingsButton
+              onClick={preview}
+              disabled={voices.length === 0 || voiceDisabled}
+            >
+              {previewing ? <Square size={12} /> : <Play size={12} />}
+              {previewing ? "Stop" : "Test"}
+            </SettingsButton>
+          </div>
+        </SettingsRow>
 
-      <SettingsRow
-        label="Read Aloud voice"
-        icon={Volume2}
-        description={
-          voices.length === 0
-            ? "Your browser reports no speech voices, so Read Aloud is unavailable here."
-            : "Voices come from your device, so this list differs between computers. A saved voice that isn't installed falls back to the default."
-        }
-      >
-        <div className="flex items-center gap-2">
+        <SettingsRow label="Speed" hidden={!ttsSupported}>
+          <SettingsSlider
+            label="Speech speed"
+            value={values.rate}
+            min={0.5}
+            max={2}
+            step={0.05}
+            disabled={voiceDisabled}
+            onCommit={(v) => set({ rate: v })}
+            format={(v) => `${v.toFixed(2)}×`}
+          />
+        </SettingsRow>
+
+        <SettingsRow label="Pitch" hidden={!ttsSupported}>
+          <SettingsSlider
+            label="Speech pitch"
+            value={values.pitch}
+            min={0}
+            max={2}
+            step={0.1}
+            disabled={voiceDisabled}
+            onCommit={(v) => set({ pitch: v })}
+            format={(v) => v.toFixed(1)}
+          />
+        </SettingsRow>
+
+        <SettingsRow label="Volume" hidden={!ttsSupported}>
+          <SettingsSlider
+            label="Speech volume"
+            value={values.volume}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={voiceDisabled}
+            onCommit={(v) => set({ volume: v })}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Read every reply aloud"
+          description="Speaks each answer as it finishes, without you pressing anything."
+          hidden={!ttsSupported}
+        >
+          <SettingsToggle
+            label="Read every reply aloud"
+            checked={values.autoReadReplies}
+            onChange={(v) => set({ autoReadReplies: v })}
+            disabled={voiceDisabled}
+          />
+        </SettingsRow>
+      </SettingsCard>
+
+      <SettingsCard title="Speaking to Hetex">
+        <SettingsRow
+          label="Microphone in the composer"
+          icon={Mic}
+          unavailable={
+            sttSupported
+              ? undefined
+              : "This browser has no speech recognition. Chrome and Edge have it; Firefox and Safari do not."
+          }
+        >
+          <SettingsToggle
+            label="Microphone in the composer"
+            checked={values.dictationEnabled}
+            onChange={(v) => set({ dictationEnabled: v })}
+            disabled={!sttSupported || voiceDisabled}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Speech recognition language"
+          description="What language you speak when dictating — not the language of the interface."
+        >
           <SettingsDropdown
-            label="Read Aloud voice"
-            value={prefs.voiceName ?? ""}
-            disabled={voices.length === 0}
-            onChange={(v) => run(() => update({ voiceName: v || null }))}
+            label="Speech recognition language"
+            value={values.inputLanguage}
+            disabled={!sttSupported || values.autoDetectInputLanguage}
+            onChange={(v) => set({ inputLanguage: v })}
+            options={DICTATION_LANGS}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Detect the language automatically"
+          description="Uses your browser's own language instead of the choice above. Web speech recognition cannot detect a language mid-sentence, so this follows the browser rather than the sound."
+        >
+          <SettingsToggle
+            label="Detect the language automatically"
+            checked={values.autoDetectInputLanguage}
+            onChange={(v) => set({ autoDetectInputLanguage: v })}
+            disabled={!sttSupported}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Live transcription"
+          description="Words appear in the composer as you speak them, rather than only when you stop."
+        >
+          <SettingsToggle
+            label="Live transcription"
+            checked={values.liveTranscription}
+            onChange={(v) => set({ liveTranscription: v })}
+            disabled={!sttSupported}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Show the transcript"
+          description="Displays what was heard before it is sent."
+        >
+          <SettingsToggle
+            label="Show the transcript"
+            checked={values.showTranscript}
+            onChange={(v) => set({ showTranscript: v })}
+            disabled={!sttSupported}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Let me edit before sending"
+          description="Off sends what was heard as soon as you stop talking. On leaves it in the composer to correct."
+        >
+          <SettingsToggle
+            label="Let me edit before sending"
+            checked={values.editTranscript}
+            onChange={(v) => set({ editTranscript: v })}
+            disabled={!sttSupported}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Send automatically"
+          description="Sends as soon as you stop speaking. Ignored while 'Let me edit before sending' is on."
+        >
+          <SettingsToggle
+            label="Send automatically"
+            checked={values.autoSubmit}
+            onChange={(v) => set({ autoSubmit: v })}
+            disabled={!sttSupported || values.editTranscript}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Microphone behaviour"
+          description="Tap starts and stops. Hold listens only while the button is held. Continuous keeps listening until you stop it."
+        >
+          <SegmentedControl
+            label="Microphone behaviour"
+            value={values.micMode}
+            onChange={(v) => set({ micMode: v })}
             options={[
-              { value: "", label: "Browser default" },
-              ...voices.map((v) => ({
-                value: v.name,
-                label: `${v.name} (${v.lang})`,
-              })),
+              { value: "tap", label: "Tap" },
+              { value: "hold", label: "Hold" },
+              { value: "continuous", label: "Continuous" },
+            ]}
+            disabled={!sttSupported}
+          />
+        </SettingsRow>
+      </SettingsCard>
+
+      <SettingsCard title="Audio">
+        <SettingsRow
+          label="Noise reduction"
+          description="Requested when Hetex opens the microphone. Browser dictation does not accept audio constraints, so this applies to the microphone check below and to live voice."
+        >
+          <SettingsToggle
+            label="Noise reduction"
+            checked={values.noiseReduction}
+            onChange={(v) => set({ noiseReduction: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow label="Audio quality">
+          <SegmentedControl
+            label="Audio quality"
+            value={values.audioQuality}
+            onChange={(v) => set({ audioQuality: v })}
+            options={[
+              { value: "standard", label: "Standard" },
+              { value: "high", label: "High" },
             ]}
           />
-          <SettingsButton onClick={preview} disabled={voices.length === 0}>
-            <Play size={12} /> Test
-          </SettingsButton>
-        </div>
-      </SettingsRow>
+        </SettingsRow>
 
-      {error && <p className="mt-4 text-xs text-hetex-red-500">{error}</p>}
+        <SettingsRow
+          label="Sound effects"
+          description="A short tone when listening starts and stops."
+        >
+          <SettingsToggle
+            label="Sound effects"
+            checked={values.soundEffects}
+            onChange={(v) => set({ soundEffects: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Haptic feedback"
+          description="A brief vibration on devices that have one. Desktop browsers ignore it."
+        >
+          <SettingsToggle
+            label="Haptic feedback"
+            checked={values.hapticFeedback}
+            onChange={(v) => set({ hapticFeedback: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label="Check the microphone"
+          description={micDetail ?? "Opens the microphone once and reports what the browser gave back."}
+        >
+          <div className="flex items-center gap-2">
+            {micState === "ok" && <StatusPill tone="ok">Working</StatusPill>}
+            {micState === "denied" && <StatusPill tone="off">Blocked</StatusPill>}
+            {micState === "unsupported" && (
+              <StatusPill tone="off">Unsupported</StatusPill>
+            )}
+            <SettingsButton
+              onClick={checkMicrophone}
+              busy={micState === "checking"}
+            >
+              Test
+            </SettingsButton>
+          </div>
+        </SettingsRow>
+      </SettingsCard>
     </>
   );
 }

@@ -11,6 +11,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Test files import with an explicit .ts extension so Node can run them
+    // straight from source with its own type stripping — no test runner and no
+    // extra dependency. Safe here because this project never emits JS.
+    "allowImportingTsExtensions": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],

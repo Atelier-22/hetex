@@ -1,0 +1,11 @@
+// Typechecks everything, tests included. The main tsconfig excludes tests so
+// that `npm run build` does not ship them to dist/ — but they still have to
+// compile, or a test can rot without anyone noticing.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

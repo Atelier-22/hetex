@@ -27,6 +27,7 @@ export class DeepSeekProvider implements AIProvider {
   readonly capabilities: ProviderCapabilities = {
     webSearch: false,
     images: false,
+    temperature: true,
   };
 
   readonly models = [
@@ -67,6 +68,11 @@ export class DeepSeekProvider implements AIProvider {
     const payload = {
       model: options?.model ?? "deepseek-chat",
       max_tokens: options?.maxTokens ?? 4096,
+      // Sent only when the account has set one — otherwise the provider's own
+      // default applies, which is the right behaviour for an untouched setting.
+      ...(options?.temperature !== undefined
+        ? { temperature: options.temperature }
+        : {}),
       stream: true,
       messages: [
         ...(options?.systemPrompt

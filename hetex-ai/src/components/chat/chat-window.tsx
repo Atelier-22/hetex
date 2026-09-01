@@ -1,30 +1,50 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Send,
-  Square,
+  ArrowDown,
+  BrainCircuit,
+  Cloud,
+  FileText,
+  Globe,
+  HardDrive,
   Mic,
   MicOff,
-  Trash2,
+  Radio,
   RotateCcw,
+  Send,
+  Square,
+  Trash2,
   X,
-  Globe,
-  FileText,
-  ArrowDown,
 } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ComposerMenu } from "./composer-menu";
+import { LiveVoicePanel } from "./live-voice-panel";
 import { HetexIcon } from "../logo";
-import { usePreferences } from "../preferences";
+import { useSettingsStore } from "@/lib/settings/store";
 import { apiFetch, apiStream } from "@/lib/api-client";
+import {
+  getSpeechRecognition,
+  haptic,
+  playCue,
+  recognitionLanguage,
+  speak,
+  stopSpeaking,
+  useSpeechVoices,
+  type SpeechRecognitionLike,
+} from "@/lib/speech";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt?: Date | string;
+  /** Filled from the stream's meta event, when the setting asks for it. */
+  model?: string;
+  processedLocally?: boolean;
+  routed?: boolean;
+  routingReason?: string;
 };
 
 type PendingFile = {
@@ -51,41 +71,58 @@ export function ChatWindow({
   initialMessages?: Message[];
 }) {
   const router = useRouter();
+  const { settings, meta } = useSettingsStore();
+  const { voices } = useSpeechVoices();
+
+  const conv = settings.conversation;
+  const voice = settings.voice;
+
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
-  const { prefs, loaded } = usePreferences();
-  const enterToSend = prefs.enterToSend;
   const [searching, setSearching] = useState(false);
   const [sources, setSources] = useState<{ title: string; url: string }[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [interim, setInterim] = useState("");
   const [micSupported, setMicSupported] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [excludeFromMemory, setExcludeFromMemory] = useState(false);
+  const [turnMeta, setTurnMeta] = useState<{
+    model?: string;
+    processedLocally?: boolean;
+  } | null>(null);
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
+
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  // Read by the streaming loop, which is started once and must see the current
+  // value rather than the one captured when it began.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   // Only follow the stream while the user is already at the bottom. Scrolling
   // up to re-read something and being yanked back down on every token is the
   // single most irritating thing a chat UI can do.
   useEffect(() => {
-    if (pinnedToBottom) {
-      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (pinnedToBottom && conv.autoScroll) {
+      scrollRef.current?.scrollIntoView({
+        behavior: settings.appearance.animations === "off" ? "auto" : "smooth",
+      });
     }
-  }, [messages, pinnedToBottom]);
+  }, [messages, pinnedToBottom, conv.autoScroll, settings.appearance.animations]);
 
   function handleScroll() {
     const el = scrollContainerRef.current;
     if (!el) return;
-    const distanceFromBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setPinnedToBottom(distanceFromBottom < 80);
   }
 
@@ -101,51 +138,125 @@ export function ChatWindow({
   useEffect(resizeTextarea, [input]);
 
   useEffect(() => {
-    const SpeechRecognition =
-      typeof window !== "undefined" &&
-      ((window as any).SpeechRecognition ||
-        (window as any).webkitSpeechRecognition);
-    setMicSupported(Boolean(SpeechRecognition));
+    setMicSupported(Boolean(getSpeechRecognition()));
   }, []);
 
-  // Always shown where the browser supports it. It used to be gated on a
-  // setting, which meant anyone who never opened Settings could end up without
-  // a microphone and no way to know why. The only condition now is whether
-  // speech recognition exists at all — Chrome and Edge have it, Firefox and
-  // Safari do not.
-  const showMic = micSupported;
+  useEffect(() => () => stopSpeaking(), []);
 
-  function toggleListening() {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+  /**
+   * Tell the user a reply landed while they were looking elsewhere.
+   *
+   * Gated on the setting and on an actual granted permission — the setting
+   * cannot be true without one, but the permission can be revoked afterwards.
+   */
+  const notifyIfHidden = useCallback((text: string) => {
+    const n = settingsRef.current.notifications;
+    if (!n.desktopCompletion) return;
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    if (!document.hidden) return;
 
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
+    if (n.quietHoursEnabled) {
+      const now = new Date();
+      const minutes = now.getHours() * 60 + now.getMinutes();
+      const [sh, sm] = n.quietHoursStart.split(":").map(Number);
+      const [eh, em] = n.quietHoursEnd.split(":").map(Number);
+      const start = sh * 60 + sm;
+      const end = eh * 60 + em;
+      // Quiet hours usually wrap midnight, so the two orderings differ.
+      const quiet = start <= end
+        ? minutes >= start && minutes < end
+        : minutes >= start || minutes < end;
+      if (quiet) return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = prefs.voiceInputLang ?? "en-US";
-    recognition.interimResults = false;
+    try {
+      new Notification("Hetex AI", {
+        body: text.slice(0, 140),
+        silent: !n.sound,
+      });
+    } catch {
+      // Blocked, or unsupported in this context.
+    }
+  }, []);
+
+  // The mic is shown when the browser supports it and the account wants it.
+  const showMic = micSupported && voice.dictationEnabled;
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsListening(false);
+    setInterim("");
+  }, []);
+
+  const startListening = useCallback(() => {
+    const Recognition = getSpeechRecognition();
+    if (!Recognition) return;
+
+    const v = settingsRef.current.voice;
+    const recognition = new Recognition();
+    recognition.lang = recognitionLanguage(v);
+    recognition.continuous = v.micMode === "continuous";
+    recognition.interimResults = v.liveTranscription;
     recognition.maxAlternatives = 1;
 
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) finalText += result[0].transcript;
+        else interimText += result[0].transcript;
+      }
+
+      setInterim(v.liveTranscription ? interimText : "");
+
+      if (finalText) {
+        setInput((prev) => (prev ? `${prev} ${finalText}` : finalText).trim());
+        // Auto-submit only makes sense when the user has not asked to review
+        // the transcript first; the two settings would otherwise contradict.
+        if (v.autoSubmit && !v.editTranscript) {
+          setTimeout(() => sendRef.current?.(), 60);
+        }
+      }
     };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+
+    recognition.onerror = () => stopListening();
+    recognition.onend = () => {
+      setIsListening(false);
+      setInterim("");
+      recognitionRef.current = null;
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
+    playCue("start", v);
+    haptic(v);
+  }, [stopListening]);
+
+  function toggleListening() {
+    if (isListening) {
+      stopListening();
+      playCue("stop", voice);
+      return;
+    }
+    startListening();
   }
 
   function handleFilesSelected(fileList: FileList) {
+    const maxBytes = (meta?.limits?.maxUploadMb ?? 5) * 1_000_000;
+
     Array.from(fileList).forEach((file) => {
+      if (file.size > maxBytes) {
+        setError(
+          `"${file.name}" is larger than the ${meta?.limits?.maxUploadMb ?? 5} MB limit.`
+        );
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
@@ -178,29 +289,69 @@ export function ChatWindow({
     const controller = new AbortController();
     abortRef.current = controller;
 
-    try {
-      const res = await apiStream(
-        "/chat",
-        {
-          message: text,
-          conversationId,
-          projectId: !conversationId ? selectedProject?.id : undefined,
-          attachments: files.map((f) => ({
-            name: f.name,
-            mediaType: f.mediaType,
-            base64: f.base64,
-          })),
-          webSearchEnabled: useWebSearch,
-        },
-        controller.signal
-      );
+    const body = {
+      message: text,
+      conversationId,
+      projectId: !conversationId ? selectedProject?.id : undefined,
+      attachments: files.map((f) => ({
+        name: f.name,
+        mediaType: f.mediaType,
+        base64: f.base64,
+      })),
+      webSearchEnabled: useWebSearch,
+      excludeFromMemory,
+    };
 
+    if (settingsRef.current.advanced.debugMode) {
+      console.info("[hetex] sending", { ...body, attachments: files.length });
+    }
+
+    try {
+      // Non-streaming is a real setting, not a cosmetic one: without the
+      // event-stream Accept header the server answers with one JSON body.
+      if (!conv.streamResponses || !settingsRef.current.advanced.streaming) {
+        const result = await apiFetch<{
+          conversationId: string;
+          reply: string;
+          model?: string;
+          processedLocally?: boolean;
+          sources?: { title: string; url: string }[];
+        }>("/chat", { method: "POST", body: JSON.stringify(body) });
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: result.reply,
+                  model: result.model,
+                  processedLocally: result.processedLocally,
+                }
+              : m
+          )
+        );
+        setTurnMeta({
+          model: result.model,
+          processedLocally: result.processedLocally,
+        });
+        if (result.sources?.length) setSources(result.sources);
+        afterReply(result.reply);
+
+        if (!conversationId && result.conversationId) {
+          router.push(`/chat/${result.conversationId}`);
+          router.refresh();
+        }
+        return;
+      }
+
+      const res = await apiStream("/chat", body, controller.signal);
       if (!res.body) throw new Error("No response stream from server");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let newConversationId: string | undefined;
+      let fullText = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -218,8 +369,30 @@ export function ChatWindow({
           const eventType = eventLine.replace("event: ", "");
           const data = JSON.parse(dataLine.replace("data: ", ""));
 
-          if (eventType === "meta" && data.conversationId && !conversationId) {
-            newConversationId = data.conversationId;
+          if (eventType === "meta") {
+            if (data.conversationId && !conversationId) {
+              newConversationId = data.conversationId;
+            }
+            setTurnMeta({
+              model: data.model,
+              processedLocally: data.processedLocally,
+            });
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      model: data.model,
+                      processedLocally: data.processedLocally,
+                      routed: data.routed,
+                      routingReason: data.routingReason,
+                    }
+                  : m
+              )
+            );
+            if (settingsRef.current.advanced.debugMode) {
+              console.info("[hetex] turn meta", data);
+            }
           } else if (eventType === "searching") {
             setSearching(true);
           } else if (eventType === "sources") {
@@ -229,6 +402,7 @@ export function ChatWindow({
             // The first token means searching is over, whether or not a
             // sources event arrives.
             setSearching(false);
+            fullText += data.text;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -242,6 +416,8 @@ export function ChatWindow({
           }
         }
       }
+
+      afterReply(fullText);
 
       if (newConversationId) {
         router.push(`/chat/${newConversationId}`);
@@ -257,14 +433,49 @@ export function ChatWindow({
     }
   }
 
+  /** Everything that happens once a reply is complete. */
+  function afterReply(text: string) {
+    if (!text.trim()) return;
+
+    notifyIfHidden(text);
+
+    const v = settingsRef.current.voice;
+    if (v.autoReadReplies) {
+      speak(text, v, voices, undefined, settingsRef.current.language.voiceOutput);
+    }
+
+    // Continuous mode listens again for the next thing you say.
+    if (v.micMode === "continuous" && isListening === false && showMic) {
+      startListening();
+    }
+  }
+
   async function sendMessage() {
     const text = input.trim();
     if ((!text && pendingFiles.length === 0) || isStreaming) return;
+
+    // "Ask before analysing" is a privacy check, so it only asks when the image
+    // would actually leave this machine — with local-only processing on, or
+    // analysis off, there is nothing to warn about.
+    const images = pendingFiles.filter((f) => f.mediaType.startsWith("image/"));
+    if (
+      images.length > 0 &&
+      settings.images.askBeforeAnalyzing &&
+      settings.images.analysisEnabled &&
+      !settings.privacy.localOnly &&
+      turnMeta?.processedLocally !== true
+    ) {
+      const ok = window.confirm(
+        `${images.length === 1 ? "This image" : `These ${images.length} images`} will be sent to a hosted AI service to be read. Continue?`
+      );
+      if (!ok) return;
+    }
 
     setError(null);
     setLastFailedMessage(null);
     setSources([]);
     setInput("");
+    setInterim("");
     const filesToSend = pendingFiles;
     setPendingFiles([]);
 
@@ -290,6 +501,11 @@ export function ChatWindow({
     await streamReply(text, assistantId, filesToSend, webSearchEnabled);
   }
 
+  // Held in a ref so speech recognition's callback can send without being
+  // rebuilt on every keystroke.
+  const sendRef = useRef<() => void>();
+  sendRef.current = () => void sendMessage();
+
   async function retryLastMessage() {
     const text = lastFailedMessage;
     if (!text) return;
@@ -313,9 +529,7 @@ export function ChatWindow({
     if (!priorUser) return;
 
     setMessages((prev) =>
-      prev.map((m) =>
-        m.id === assistantMessageId ? { ...m, content: "" } : m
-      )
+      prev.map((m) => (m.id === assistantMessageId ? { ...m, content: "" } : m))
     );
     await streamReply(priorUser.content, assistantMessageId);
   }
@@ -332,12 +546,12 @@ export function ChatWindow({
     // is nothing to delete — just clear the screen.
     if (conversationId) {
       try {
-        await apiFetch(`/conversations/${conversationId}`, {
-          method: "DELETE",
-        });
+        await apiFetch(`/conversations/${conversationId}`, { method: "DELETE" });
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Could not delete the conversation"
+          err instanceof Error
+            ? err.message
+            : "Could not delete the conversation"
         );
         return;
       }
@@ -348,20 +562,80 @@ export function ChatWindow({
     router.refresh();
   }
 
+  const sendOnEnter = conv.sendKey === "enter";
+  const showProcessing =
+    settings.privacy.showProcessingLocation && turnMeta !== null;
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-2.5 md:px-8">
-        <span className="text-sm font-medium text-[var(--text-secondary)]">
-          {messages.length > 0 ? `${messages.length} messages` : "New chat"}
-        </span>
-        {messages.length > 0 && (
-          <button
-            onClick={clearConversation}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
-          >
-            <Trash2 size={13} /> Delete
-          </button>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5 md:px-8">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-[var(--text-secondary)]">
+            {messages.length > 0 ? `${messages.length} messages` : "New chat"}
+          </span>
+
+          {conv.showUsage && messages.length > 0 && (
+            <span className="text-xs text-[var(--text-secondary)]">
+              ·{" "}
+              {messages
+                .reduce((n, m) => n + m.content.length, 0)
+                .toLocaleString()}{" "}
+              characters
+            </span>
+          )}
+
+          {showProcessing && (
+            <span
+              className="flex items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
+              title={
+                turnMeta?.processedLocally
+                  ? "Answered by a model running on the Hetex server. Nothing was sent to an external provider."
+                  : "Answered by a hosted AI service. Your message was sent to it."
+              }
+            >
+              {turnMeta?.processedLocally ? (
+                <>
+                  <HardDrive size={11} /> Processed locally
+                </>
+              ) : (
+                <>
+                  <Cloud size={11} /> Hosted
+                </>
+              )}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          {settings.memory.enabled && (
+            <button
+              onClick={() => setExcludeFromMemory((v) => !v)}
+              aria-pressed={excludeFromMemory}
+              title={
+                excludeFromMemory
+                  ? "Nothing from this conversation will be remembered"
+                  : "Don't remember this conversation"
+              }
+              className={`focus-ring flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${
+                excludeFromMemory
+                  ? "bg-accent-soft"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+              }`}
+            >
+              <BrainCircuit size={13} />
+              {excludeFromMemory ? "Not remembered" : "Remember"}
+            </button>
+          )}
+
+          {messages.length > 0 && (
+            <button
+              onClick={clearConversation}
+              className="focus-ring flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+            >
+              <Trash2 size={13} /> Delete
+            </button>
+          )}
+        </div>
       </div>
 
       <div
@@ -369,7 +643,7 @@ export function ChatWindow({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-6 md:px-8"
       >
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="chat-stack mx-auto flex max-w-3xl flex-col">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 pt-20 text-center text-[var(--text-secondary)]">
               <HetexIcon size={80} priority />
@@ -384,7 +658,7 @@ export function ChatWindow({
                       setInput(s);
                       textareaRef.current?.focus();
                     }}
-                    className="hover:border-accent rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors"
+                    className="hover:border-accent focus-ring rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors"
                   >
                     {s}
                   </button>
@@ -392,14 +666,21 @@ export function ChatWindow({
               </div>
             </div>
           )}
+
           {messages.map((m) => (
             <MessageBubble
               key={m.id}
               id={m.id}
               role={m.role}
               content={m.content}
-              timestamp={m.createdAt}
+              timestamp={conv.showTimestamps ? m.createdAt : undefined}
               conversationId={conversationId}
+              model={conv.showModelUsed ? m.model : undefined}
+              processedLocally={m.processedLocally}
+              routingReason={
+                settings.advanced.developerMode ? m.routingReason : undefined
+              }
+              showTypingIndicator={conv.showTypingIndicator}
               isStreaming={
                 isStreaming && m.id === messages[messages.length - 1]?.id
               }
@@ -408,6 +689,7 @@ export function ChatWindow({
               }
             />
           ))}
+
           {searching && (
             <div className="flex items-center gap-2 self-start rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)]">
               <Globe size={12} className="animate-pulse" />
@@ -438,12 +720,15 @@ export function ChatWindow({
           )}
 
           {error && (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-hetex-red-500/30 bg-hetex-red-500/10 px-4 py-2.5 text-sm text-hetex-red-500">
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 rounded-xl border border-hetex-red-500/30 bg-hetex-red-500/10 px-4 py-2.5 text-sm text-hetex-red-500"
+            >
               <span>{error}</span>
               {lastFailedMessage && (
                 <button
                   onClick={retryLastMessage}
-                  className="flex shrink-0 items-center gap-1 rounded-md border border-hetex-red-500/40 px-2 py-1 text-xs hover:bg-hetex-red-500/10"
+                  className="focus-ring flex shrink-0 items-center gap-1 rounded-md border border-hetex-red-500/40 px-2 py-1 text-xs hover:bg-hetex-red-500/10"
                 >
                   <RotateCcw size={12} /> Retry
                 </button>
@@ -461,22 +746,49 @@ export function ChatWindow({
               setPinnedToBottom(true);
               scrollRef.current?.scrollIntoView({ behavior: "smooth" });
             }}
-            className="absolute -top-11 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-md hover:text-[var(--text-primary)]"
+            className="focus-ring absolute -top-11 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-md hover:text-[var(--text-primary)]"
           >
             <ArrowDown size={13} /> Jump to latest
           </button>
         )}
+
         <div className="mx-auto max-w-3xl">
-          {(pendingFiles.length > 0 || webSearchEnabled || selectedProject) && (
+          {liveVoiceOpen && (
+            <LiveVoicePanel
+              conversationId={conversationId}
+              onClose={() => setLiveVoiceOpen(false)}
+              onTurn={(turn) =>
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: turn.role,
+                    content: turn.text,
+                    createdAt: new Date(),
+                  },
+                ])
+              }
+            />
+          )}
+
+          {(pendingFiles.length > 0 ||
+            webSearchEnabled ||
+            selectedProject ||
+            (interim && voice.showTranscript)) && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
               {selectedProject && (
-                <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs">
+                <span className="bg-accent-soft flex items-center gap-1 rounded-full px-2.5 py-1 text-xs">
                   in {selectedProject.name}
                 </span>
               )}
               {webSearchEnabled && (
-                <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs">
+                <span className="bg-accent-soft flex items-center gap-1 rounded-full px-2.5 py-1 text-xs">
                   <Globe size={11} /> Web search on
+                </span>
+              )}
+              {interim && voice.showTranscript && (
+                <span className="flex items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-xs italic text-[var(--text-secondary)]">
+                  <Mic size={11} /> {interim}
                 </span>
               )}
               {pendingFiles.map((f) => (
@@ -497,7 +809,8 @@ export function ChatWindow({
                   <span className="max-w-[120px] truncate">{f.name}</span>
                   <button
                     onClick={() => removeFile(f.name)}
-                    aria-label="Remove attachment"
+                    aria-label={`Remove ${f.name}`}
+                    className="focus-ring rounded"
                   >
                     <X size={12} className="text-[var(--text-secondary)]" />
                   </button>
@@ -515,53 +828,92 @@ export function ChatWindow({
               onSelectProject={setSelectedProject}
               showProjectPicker={!conversationId}
             />
+
+            {settings.liveVoice.enabled && micSupported && (
+              <button
+                onClick={() => setLiveVoiceOpen((v) => !v)}
+                aria-pressed={liveVoiceOpen}
+                aria-label="Live voice"
+                title="Live voice — talk and listen hands-free"
+                className={`focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-11 sm:w-11 ${
+                  liveVoiceOpen
+                    ? "border-accent text-accent"
+                    : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
+                }`}
+              >
+                <Radio size={16} />
+              </button>
+            )}
+
             {showMic && (
               <button
-                onClick={toggleListening}
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-11 sm:w-11 ${
+                onClick={voice.micMode === "hold" ? undefined : toggleListening}
+                onPointerDown={
+                  voice.micMode === "hold" ? startListening : undefined
+                }
+                onPointerUp={voice.micMode === "hold" ? stopListening : undefined}
+                onPointerLeave={
+                  voice.micMode === "hold" && isListening ? stopListening : undefined
+                }
+                className={`focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-11 sm:w-11 ${
                   isListening
                     ? "animate-pulse border-hetex-red-500 text-hetex-red-500"
                     : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
                 }`}
-                aria-label={isListening ? "Stop listening" : "Voice input"}
-                title={isListening ? "Listening… click to stop" : "Speak your message"}
+                aria-label={isListening ? "Stop listening" : "Speak your message"}
+                aria-pressed={isListening}
+                title={
+                  voice.micMode === "hold"
+                    ? "Hold to talk"
+                    : voice.micMode === "continuous"
+                      ? "Continuous listening"
+                      : isListening
+                        ? "Listening — click to stop"
+                        : "Speak your message"
+                }
               >
                 {isListening ? <MicOff size={16} /> : <Mic size={16} />}
               </button>
             )}
+
             <textarea
               ref={textareaRef}
               value={input}
+              aria-label="Message Hetex AI"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (enterToSend && e.key === "Enter" && !e.shiftKey) {
+                if (e.key !== "Enter") return;
+                const wantsSend = sendOnEnter
+                  ? !e.shiftKey && !e.ctrlKey && !e.metaKey
+                  : e.ctrlKey || e.metaKey;
+                if (wantsSend) {
                   e.preventDefault();
-                  sendMessage();
+                  void sendMessage();
                 }
               }}
-              // The keyboard hint is desktop-only: there is no Shift+Enter on a
-              // phone, and the long placeholder is truncated on a narrow input
-              // anyway.
-              placeholder="Message Hetex AI…"
+              placeholder={
+                sendOnEnter ? "Message Hetex AI…" : "Message Hetex AI… (Ctrl+Enter to send)"
+              }
               rows={1}
               // 16px on mobile: iOS Safari zooms the whole page in when a
               // focused input's text is smaller than that, and never zooms back
               // out.
-              className="max-h-[200px] min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-base outline-none focus-accent sm:px-4 sm:py-3 sm:text-sm"
+              className="focus-ring max-h-[200px] min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-base outline-none sm:px-4 sm:py-3 sm:text-sm"
             />
+
             {isStreaming ? (
               <button
                 onClick={stopGeneration}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] sm:h-11 sm:w-11"
+                className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] sm:h-11 sm:w-11"
                 aria-label="Stop generating"
               >
                 <Square size={16} />
               </button>
             ) : (
               <button
-                onClick={sendMessage}
+                onClick={() => void sendMessage()}
                 disabled={!input.trim() && pendingFiles.length === 0}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-gradient text-white disabled:opacity-40 sm:h-11 sm:w-11"
+                className="bg-accent-gradient focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40 sm:h-11 sm:w-11"
                 aria-label="Send message"
               >
                 <Send size={16} />

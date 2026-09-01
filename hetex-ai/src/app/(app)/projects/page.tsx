@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { FolderKanban, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { useSettingsGroup } from "@/lib/settings/store";
 
 type Project = { id: string; name: string; _count: { conversations: number } };
 
 export default function ProjectsPage() {
+  const projectDefaults = useSettingsGroup("projects");
   const [projects, setProjects] = useState<Project[]>([]);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -30,7 +32,14 @@ export default function ProjectsPage() {
     try {
       await apiFetch("/projects", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          // Settings → Projects → Default instructions, applied at creation so
+          // a new project starts with them rather than needing them retyped.
+          ...(projectDefaults.defaultInstructions
+            ? { instructions: projectDefaults.defaultInstructions }
+            : {}),
+        }),
       });
       setName("");
       setCreating(false);

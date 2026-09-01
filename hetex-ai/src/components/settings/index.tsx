@@ -11,5 +11,5 @@ export function SettingsOverlay() {
   return <SettingsModal renderSection={(id) => <SettingsSection id={id} />} />;
 }
 
-export { SettingsProvider, useSettings } from "./settings-context";
-export type { SectionId } from "./settings-context";
+export { SettingsUiProvider, useSettingsUi } from "./settings-context";
+export type { SectionId } from "./registry";

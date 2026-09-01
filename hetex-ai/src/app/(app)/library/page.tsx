@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Library as LibraryIcon, FileText } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
+import { useSettingsGroup } from "@/lib/settings/store";
 
 type Asset = {
   id: string;
@@ -11,12 +12,14 @@ type Asset = {
   name: string | null;
   mediaType: string | null;
   prompt: string | null;
+  createdAt?: string;
 };
 
 export default function LibraryPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { sort } = useSettingsGroup("library");
 
   useEffect(() => {
     apiFetch<Asset[]>("/library")
@@ -27,6 +30,37 @@ export default function LibraryPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  /**
+   * Ordered by the Library setting.
+   *
+   * The API returns newest first; the other orders are applied here rather than
+   * as a query parameter, because the whole list is already loaded and a round
+   * trip to reorder it would be slower and no more correct.
+   *
+   * "Most used" has nothing to count yet — usage is not recorded per asset — so
+   * it falls back to newest rather than pretending to a ranking it does not
+   * have. That is stated in the header when it is in effect.
+   */
+  const ordered = useMemo(() => {
+    const copy = [...assets];
+    const at = (a: Asset) => (a.createdAt ? Date.parse(a.createdAt) : 0);
+
+    switch (sort) {
+      case "oldest":
+        return copy.sort((a, b) => at(a) - at(b));
+      case "alphabetical":
+        return copy.sort((a, b) =>
+          (a.name ?? "").localeCompare(b.name ?? "", undefined, {
+            sensitivity: "base",
+          })
+        );
+      case "newest":
+      case "most_used":
+      default:
+        return copy.sort((a, b) => at(b) - at(a));
+    }
+  }, [assets, sort]);
+
   return (
     <div className="h-full overflow-y-auto px-6 py-10 md:px-12">
       <div className="mx-auto max-w-3xl">
@@ -35,6 +69,12 @@ export default function LibraryPage() {
           Files you attach to a conversation are collected here. Generated
           images and video will join them once those providers are connected.
         </p>
+        {sort === "most_used" && ordered.length > 0 && (
+          <p className="mt-2 text-xs text-[var(--text-secondary)]">
+            Sorted newest first: per-file usage isn&apos;t recorded, so
+            &ldquo;most used&rdquo; has nothing to rank by yet.
+          </p>
+        )}
 
         {error && (
           <p className="mt-6 rounded-lg border border-hetex-red-500/30 bg-hetex-red-500/10 px-3 py-2 text-sm text-hetex-red-500">
@@ -49,9 +89,9 @@ export default function LibraryPage() {
           </div>
         )}
 
-        {assets.length > 0 && (
+        {ordered.length > 0 && (
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {assets.map((a) => (
+            {ordered.map((a) => (
               <figure
                 key={a.id}
                 className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]"

@@ -23,6 +23,12 @@ export interface GenerationOptions {
   model?: string;
   maxTokens?: number;
   systemPrompt?: string;
+  /**
+   * Sampling temperature, 0–2. Undefined leaves the provider's own default,
+   * which is what an account that has never touched Advanced should get.
+   * Providers that do not accept one ignore it rather than failing.
+   */
+  temperature?: number;
   /** Let the model search the web for this turn. */
   webSearch?: boolean;
 }
@@ -51,6 +57,12 @@ export interface StreamChunk {
 export interface ProviderCapabilities {
   webSearch: boolean;
   images: boolean;
+  /**
+   * Whether a sampling temperature may be sent. False is not a limitation of
+   * this codebase — some vendors reject the parameter outright on their newer
+   * models, and sending it would fail the request.
+   */
+  temperature: boolean;
 }
 
 export interface AIProvider {

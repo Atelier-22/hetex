@@ -2,6 +2,10 @@ import { eq } from "drizzle-orm";
 import { env } from "../env";
 import { db, schema } from "../db";
 import { generateAI } from "../ai/router";
+import { loadSettings } from "../settings/store";
+import { getPlatformConfig } from "../settings/platform";
+import { MEMORY_CATEGORIES, type MemoryCategory } from "../settings/schema";
+import { enabledMemoryCategories } from "./chat.service";
 
 /**
  * Learning what matters about a user from their conversations.
@@ -11,17 +15,19 @@ import { generateAI } from "../ai/router";
  * is exactly the behaviour that setting is supposed to gate.
  */
 
-const MAX_MEMORIES = 60;
 const MAX_FACT_LENGTH = 200;
+
+const CATEGORY_GUIDE = `Each fact must be filed under exactly one category:
+- "preferences"      — how they want you to work ("prefers TypeScript", "wants short answers")
+- "projects"         — what they are building or working on ("building a payments app")
+- "personalization"  — durable facts about them ("based in Kampala", "works solo")
+- "conversation"     — context that spans conversations but is not any of the above`;
 
 const EXTRACTION_PROMPT = `You maintain a long-term memory about a user of an AI assistant.
 
 Read the exchange and decide whether it revealed anything durably true about the user that would make future conversations better.
 
-Record only:
-- Stable preferences ("prefers TypeScript", "wants short answers, no preamble")
-- Ongoing context ("building a payments app", "learning Spanish")
-- Facts about their situation ("based in Kampala", "works solo")
+${CATEGORY_GUIDE}
 
 Never record:
 - One-off questions or the subject of this conversation
@@ -32,11 +38,13 @@ Never record:
 Most exchanges reveal nothing worth keeping. Returning an empty list is the normal, correct outcome — do not invent something to record.
 
 Reply with JSON only, in this exact shape:
-{"facts": ["...", "..."]}
+{"facts": [{"text": "...", "category": "preferences"}]}
 
 Each fact: one short sentence, written in the third person about the user.`;
 
-function factsFrom(text: string): string[] {
+export type ExtractedFact = { text: string; category: MemoryCategory };
+
+export function factsFrom(text: string): ExtractedFact[] {
   // The model is asked for bare JSON but may still fence it.
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return [];
@@ -46,9 +54,24 @@ function factsFrom(text: string): string[] {
     if (!Array.isArray(parsed.facts)) return [];
 
     return parsed.facts
-      .filter((f): f is string => typeof f === "string")
-      .map((f) => f.trim())
-      .filter((f) => f.length > 0 && f.length <= MAX_FACT_LENGTH)
+      .map((f): ExtractedFact | null => {
+        // Older prompts produced bare strings; accept both rather than losing
+        // an otherwise valid extraction to a shape change.
+        if (typeof f === "string") {
+          return { text: f.trim(), category: "preferences" };
+        }
+        if (!f || typeof f !== "object") return null;
+        const raw = f as { text?: unknown; category?: unknown };
+        if (typeof raw.text !== "string") return null;
+        const category = MEMORY_CATEGORIES.includes(raw.category as MemoryCategory)
+          ? (raw.category as MemoryCategory)
+          : "preferences";
+        return { text: raw.text.trim(), category };
+      })
+      .filter(
+        (f): f is ExtractedFact =>
+          f !== null && f.text.length > 0 && f.text.length <= MAX_FACT_LENGTH
+      )
       .slice(0, 3);
   } catch {
     return [];
@@ -56,7 +79,7 @@ function factsFrom(text: string): string[] {
 }
 
 /** Cheap near-duplicate check — the model is told not to repeat itself, but it does. */
-function isDuplicate(fact: string, existing: string[]): boolean {
+export function isDuplicate(fact: string, existing: string[]): boolean {
   const normalise = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).filter(Boolean);
 
@@ -79,22 +102,31 @@ export async function learnFromExchange(params: {
 }): Promise<void> {
   if (!env.ANTHROPIC_API_KEY) return;
 
-  const settings = await db.query.userSettings.findFirst({
-    where: eq(schema.userSettings.userId, params.userId),
-    columns: { memoryEnabled: true },
-  });
+  const [settings, config] = await Promise.all([
+    loadSettings(params.userId),
+    getPlatformConfig(),
+  ]);
 
-  // Memory off means memory off — including the part that writes it.
-  if (!settings?.memoryEnabled) return;
+  // Memory off means memory off — including the part that writes it. So does
+  // "don't add to memory on its own", which is what autoCapture gates: manual
+  // entries still work, but nothing is inferred.
+  if (!settings.memory.enabled || !settings.memory.autoCapture) return;
+
+  // A category the user has switched off is never written, so it can never be
+  // recalled later either.
+  const allowed = enabledMemoryCategories(settings) as MemoryCategory[];
+  if (allowed.length === 0) return;
+
+  const cap = config.limits.maxMemoryEntries;
 
   const existing = await db.query.userMemory.findMany({
     where: eq(schema.userMemory.userId, params.userId),
     columns: { content: true },
     orderBy: (m, { desc }) => [desc(m.createdAt)],
-    limit: MAX_MEMORIES,
+    limit: cap,
   });
 
-  if (existing.length >= MAX_MEMORIES) return;
+  if (existing.length >= cap) return;
 
   const known = existing.map((m) => m.content);
 
@@ -110,13 +142,18 @@ export async function learnFromExchange(params: {
     { vendorModel: "claude-haiku-4-5", maxTokens: 400 }
   );
 
-  const fresh = factsFrom(text).filter((f) => !isDuplicate(f, known));
+  const fresh = factsFrom(text)
+    .filter((f) => allowed.includes(f.category))
+    .filter((f) => !isDuplicate(f.text, known))
+    .slice(0, Math.max(0, cap - existing.length));
+
   if (fresh.length === 0) return;
 
   await db.insert(schema.userMemory).values(
-    fresh.map((content) => ({
+    fresh.map((f) => ({
       userId: params.userId,
-      content,
+      content: f.text,
+      category: f.category,
       source: "inferred" as const,
     }))
   );

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { RefreshCw, LogOut, ShieldCheck } from "lucide-react";
 import { StatTile, MiniBars, FeedbackMeter, ShareBars } from "./charts";
+import { PlatformConfigPanel } from "./platform-config";
 import { HetexIcon } from "../logo";
 
 export type Overview = {
@@ -251,6 +252,10 @@ export function AdminDashboard({
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-8">
+          <PlatformConfigPanel />
         </div>
 
         <div className="mb-8 mt-6 flex items-start gap-2.5 rounded-xl border border-[var(--border-subtle)] px-4 py-3">

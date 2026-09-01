@@ -24,7 +24,8 @@ import {
 } from "lucide-react";
 import { HetexIcon, HetexLockup } from "./logo";
 import { apiFetch } from "@/lib/api-client";
-import { useSettings } from "./settings/settings-context";
+import { useSettingsUi } from "./settings/settings-context";
+import { useSettingsGroup } from "@/lib/settings/store";
 
 type ConversationSummary = {
   id: string;
@@ -41,12 +42,16 @@ const navItems = [
 ];
 
 const COLLAPSED_KEY = "hetex.sidebar.collapsed";
+// Read only when the conversation list cannot be fetched. See load(), below.
+const CACHE_KEY = "hetex.conversations.cache";
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
-  const { openSettings } = useSettings();
+  const { openSettings } = useSettingsUi();
+  const { sidebar: sidebarPreference } = useSettingsGroup("appearance");
+  const offlinePrefs = useSettingsGroup("offline");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -56,16 +61,42 @@ export function Sidebar() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [offline, setOffline] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
+  // Settings → Appearance → Sidebar decides the starting state. "Auto" follows
+  // the window width; the other two are explicit and are honoured on every
+  // load, which is what makes the setting mean something. The toggle below
+  // still works within a session and is remembered per device.
   useEffect(() => {
+    if (sidebarPreference === "expanded") {
+      setCollapsed(false);
+      return;
+    }
+    if (sidebarPreference === "collapsed") {
+      setCollapsed(true);
+      return;
+    }
+
+    const mq = window.matchMedia("(max-width: 1100px)");
+    const read = () => setCollapsed(mq.matches);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, [sidebarPreference]);
+
+  useEffect(() => {
+    if (sidebarPreference !== "expanded") return;
     try {
-      setCollapsed(localStorage.getItem(COLLAPSED_KEY) === "1");
+      // Only consulted when the account has no opinion beyond "expanded",
+      // so an explicit preference is never silently overridden by a stale
+      // per-device value.
+      if (localStorage.getItem(COLLAPSED_KEY) === "1") setCollapsed(true);
     } catch {
       /* no stored preference available */
     }
-  }, []);
+  }, [sidebarPreference]);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((c) => {
@@ -79,13 +110,54 @@ export function Sidebar() {
     });
   }, []);
 
+  /**
+   * The conversation list, cached for offline reading.
+   *
+   * Settings → Offline decides whether this happens and how many entries are
+   * kept. The cache is only *read* when the request fails, so an online load is
+   * never served stale data — it is a fallback, not a layer.
+   */
   const load = useCallback(() => {
     if (!session) return;
+
     apiFetch<ConversationSummary[]>("/conversations")
-      .then(setConversations)
-      .catch(() => setConversations([]))
+      .then((list) => {
+        setConversations(list);
+        setOffline(false);
+
+        if (offlinePrefs.cacheConversations && offlinePrefs.cacheLimit > 0) {
+          try {
+            localStorage.setItem(
+              CACHE_KEY,
+              JSON.stringify(list.slice(0, offlinePrefs.cacheLimit))
+            );
+          } catch {
+            /* storage full or blocked — the live list still works */
+          }
+        } else {
+          try {
+            localStorage.removeItem(CACHE_KEY);
+          } catch {
+            /* nothing to clean up */
+          }
+        }
+      })
+      .catch(() => {
+        if (!offlinePrefs.cacheConversations) {
+          setConversations([]);
+          return;
+        }
+        try {
+          const cached = localStorage.getItem(CACHE_KEY);
+          const list = cached ? (JSON.parse(cached) as ConversationSummary[]) : [];
+          setConversations(list);
+          setOffline(list.length > 0);
+        } catch {
+          setConversations([]);
+        }
+      })
       .finally(() => setLoading(false));
-  }, [session]);
+  }, [session, offlinePrefs.cacheConversations, offlinePrefs.cacheLimit]);
 
   useEffect(load, [load, pathname]);
 
@@ -389,8 +461,18 @@ export function Sidebar() {
           )}
 
           {(recent.length > 0 || (!loading && conversations.length === 0)) && (
-            <p className="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+            <p className="mb-1 flex items-center justify-between gap-2 px-1 text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
               Recents
+              {offline && (
+                // Shown only when the list came from the offline cache, so a
+                // stale list is never presented as the live one.
+                <span
+                  title="Showing conversations cached in this browser — the server could not be reached."
+                  className="rounded-full border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] normal-case tracking-normal"
+                >
+                  Cached
+                </span>
+              )}
             </p>
           )}
 
@@ -430,7 +512,7 @@ export function Sidebar() {
             <button
               onClick={() => {
                 setAccountOpen(false);
-                openSettings("account");
+                openSettings("profile");
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
             >
@@ -439,7 +521,7 @@ export function Sidebar() {
             <button
               onClick={() => {
                 setAccountOpen(false);
-                openSettings("general");
+                openSettings("appearance");
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
             >

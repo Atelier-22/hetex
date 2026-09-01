@@ -1,5 +1,10 @@
 "use client";
 
+// Navigation state for the settings interface: which section is open, what has
+// been searched for, and — on a phone — whether the category list or a section
+// is showing. Deliberately separate from the settings store, which holds the
+// values themselves; opening a panel is not a preference.
+
 import {
   createContext,
   useCallback,
@@ -7,76 +12,82 @@ import {
   useMemo,
   useState,
 } from "react";
-
-export const SECTION_IDS = [
-  "general",
-  "notifications",
-  "personalization",
-  "plugins",
-  "voice",
-  "billing",
-  "data-controls",
-  "storage",
-  "security",
-  "account",
-  "keyboard",
-] as const;
-
-export type SectionId = (typeof SECTION_IDS)[number];
+import type { SectionId } from "./registry";
 
 type Ctx = {
   open: boolean;
   section: SectionId;
   query: string;
+  /** Mobile only: the category list, or one section. */
+  mobileView: "list" | "section";
   openSettings: (section?: SectionId) => void;
   closeSettings: () => void;
   setSection: (id: SectionId) => void;
   setQuery: (q: string) => void;
+  backToList: () => void;
 };
 
-const SettingsContext = createContext<Ctx | null>(null);
+const SettingsUiContext = createContext<Ctx | null>(null);
 
-export function SettingsProvider({ children }: { children: React.ReactNode }) {
+export function SettingsUiProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [section, setSectionState] = useState<SectionId>("general");
+  const [section, setSectionState] = useState<SectionId>("profile");
   const [query, setQuery] = useState("");
+  const [mobileView, setMobileView] = useState<"list" | "section">("list");
 
   const openSettings = useCallback((next?: SectionId) => {
-    if (next) setSectionState(next);
+    if (next) {
+      setSectionState(next);
+      // Deep-linking to a section on a phone should land on that section, not
+      // on the list with the section hidden behind it.
+      setMobileView("section");
+    } else {
+      setMobileView("list");
+    }
     setOpen(true);
   }, []);
 
   const closeSettings = useCallback(() => {
     setOpen(false);
-    // Clearing the search on close means reopening starts clean rather than
-    // showing a filtered nav with no memory of why.
+    // Reopening starts clean rather than showing a filtered list with no memory
+    // of why it was filtered.
     setQuery("");
+    setMobileView("list");
   }, []);
 
-  const setSection = useCallback((id: SectionId) => setSectionState(id), []);
+  const setSection = useCallback((id: SectionId) => {
+    setSectionState(id);
+    setMobileView("section");
+  }, []);
+
+  const backToList = useCallback(() => setMobileView("list"), []);
 
   const value = useMemo(
     () => ({
       open,
       section,
       query,
+      mobileView,
       openSettings,
       closeSettings,
       setSection,
       setQuery,
+      backToList,
     }),
-    [open, section, query, openSettings, closeSettings, setSection]
+    [open, section, query, mobileView, openSettings, closeSettings, setSection, backToList]
   );
 
   return (
-    <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
+    <SettingsUiContext.Provider value={value}>
+      {children}
+    </SettingsUiContext.Provider>
   );
 }
 
-export function useSettings() {
-  const ctx = useContext(SettingsContext);
+export function useSettingsUi() {
+  const ctx = useContext(SettingsUiContext);
   if (!ctx) {
-    throw new Error("useSettings must be used inside SettingsProvider");
+    throw new Error("useSettingsUi must be used inside SettingsUiProvider");
   }
   return ctx;
 }

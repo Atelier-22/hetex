@@ -12,7 +12,8 @@ import {
   Square,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
-import { usePreferences } from "../preferences";
+import { useSettingsGroup } from "@/lib/settings/store";
+import { speak, stopSpeaking, useSpeechVoices } from "@/lib/speech";
 
 type Feedback = "up" | "down" | null;
 
@@ -27,7 +28,9 @@ export function MessageActions({
   messageId?: string;
   conversationId?: string;
 }) {
-  const { prefs } = usePreferences();
+  const voice = useSettingsGroup("voice");
+  const language = useSettingsGroup("language");
+  const { voices } = useSpeechVoices();
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [speaking, setSpeaking] = useState(false);
@@ -83,25 +86,13 @@ export function MessageActions({
   function handleReadAloud() {
     if (!ttsSupported) return;
     if (speaking) {
-      window.speechSynthesis.cancel();
+      stopSpeaking();
       setSpeaking(false);
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(content);
-
-    // A saved voice may not exist on this device — voices are installed per
-    // machine, so falling through to the browser default is the right
-    // behaviour rather than failing to speak at all.
-    if (prefs.voiceName) {
-      const voice = window.speechSynthesis
-        .getVoices()
-        .find((v) => v.name === prefs.voiceName);
-      if (voice) utterance.voice = voice;
-    }
-
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
+    // Voice, speed, pitch and volume all come from the account's settings, so
+    // Read Aloud sounds the same here as the preview in Settings does.
+    speak(content, voice, voices, () => setSpeaking(false), language.voiceOutput);
     setSpeaking(true);
   }
 

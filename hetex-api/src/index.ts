@@ -16,11 +16,14 @@ import { securityRouter } from "./routes/security.routes";
 import { integrationsRouter } from "./routes/integrations.routes";
 import { billingRouter } from "./routes/billing.routes";
 import { adminRouter } from "./routes/admin.routes";
+import { localAiRouter } from "./routes/local-ai.routes";
+import { systemRouter } from "./routes/system.routes";
 import {
   libraryRouter,
   usageRouter,
   feedbackRouter,
 } from "./routes/misc.routes";
+import { startRetentionSweeper } from "./services/retention.service";
 
 const app = express();
 
@@ -73,6 +76,8 @@ app.use("/security", securityRouter);
 app.use("/integrations", integrationsRouter);
 app.use("/billing", billingRouter);
 app.use("/admin", adminRouter);
+app.use("/local-ai", localAiRouter);
+app.use("/system", systemRouter);
 app.use("/library", libraryRouter);
 app.use("/usage", usageRouter);
 app.use("/feedback", feedbackRouter);
@@ -144,6 +149,10 @@ async function start() {
     }
     process.exit(1);
   }
+
+  // Conversation and file retention settings are only real if something acts on
+  // them. This is that something.
+  startRetentionSweeper();
 
   const server = app.listen(env.PORT, () => {
     console.log(`Hetex API listening on port ${env.PORT}`);

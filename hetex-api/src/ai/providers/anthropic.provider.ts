@@ -34,7 +34,7 @@ export class AnthropicProvider implements AIProvider {
   // never implies Hetex built the model.
   readonly displayName = "Anthropic";
 
-  readonly capabilities = { webSearch: true, images: true };
+  readonly capabilities = { webSearch: true, images: true, temperature: false };
 
   readonly models = [
     {

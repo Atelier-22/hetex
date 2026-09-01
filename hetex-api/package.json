@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "model:download": "node scripts/download-model.js",
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",

@@ -18,5 +18,7 @@
     "declaration": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  // Tests are typechecked by `npm run typecheck` (which uses tsconfig.test.json)
+  // and run straight from source by tsx. They have no business in dist/.
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
 }

@@ -10,6 +10,20 @@
   --text-secondary: #5b6a66;
   --border-subtle: #e2e9e6;
 
+  /* Surfaces the settings interface reads. Kept as variables rather than
+     Tailwind opacity utilities so the glass / solid / minimal styles can
+     redefine them in one place instead of in every component. */
+  --surface-panel: rgba(255, 255, 255, 0.72);
+  --surface-raised: #ffffff;
+  --surface-hover: rgba(11, 21, 18, 0.045);
+  --panel-blur: 22px;
+  --panel-shadow: 0 24px 60px -20px rgba(11, 21, 18, 0.28);
+
+  --pill-ok-bg: rgba(10, 145, 83, 0.12);
+  --pill-ok-fg: #0a7b46;
+  --pill-warn-bg: rgba(184, 115, 4, 0.12);
+  --pill-warn-fg: #8a5603;
+
   /* Green is the Hetex identity and the default. The accent set below is what
      every branded surface reads from, so a preference change moves all of them
      together instead of leaving half the UI on the old colour. */
@@ -28,6 +42,16 @@
   --text-primary: #eef4f1;
   --text-secondary: #9caaa5;
   --border-subtle: #1d2521;
+
+  --surface-panel: rgba(16, 22, 19, 0.78);
+  --surface-raised: #141b18;
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --panel-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+
+  --pill-ok-bg: rgba(55, 207, 128, 0.14);
+  --pill-ok-fg: #6fe0a6;
+  --pill-warn-bg: rgba(245, 187, 30, 0.14);
+  --pill-warn-fg: #f5cd6a;
 
   --accent-from: #37cf80;
   --accent-to: #589fff;
@@ -251,4 +275,262 @@ body {
 .prose-hetex a {
   color: var(--accent-solid);
   text-decoration: underline;
+}
+
+/* ==========================================================================
+   Settings-driven presentation
+   ==========================================================================
+
+   Everything below is switched by a data-attribute that
+   src/lib/settings/apply.ts writes onto <html>. Doing it in CSS rather than in
+   React means a preference takes effect everywhere at once — including inside
+   the settings modal that changed it, and before hydration on the next load. */
+
+/* --- AMOLED --------------------------------------------------------------
+   A separate dark palette rather than a separate theme: next-themes owns the
+   `dark` class, and AMOLED is dark with the greys pushed to true black, which
+   is what saves power on an OLED panel. */
+.dark[data-amoled="on"] {
+  --bg-primary: #000000;
+  --bg-secondary: #070a09;
+  --bg-sidebar: #000000;
+  --border-subtle: #1a201d;
+  --surface-panel: rgba(7, 10, 9, 0.88);
+  --surface-raised: #0b100e;
+}
+
+/* --- Visual style -------------------------------------------------------- */
+[data-visual-style="solid"] {
+  --surface-panel: var(--bg-secondary);
+  --panel-blur: 0px;
+}
+
+[data-visual-style="minimal"] {
+  --surface-panel: var(--bg-primary);
+  --panel-blur: 0px;
+  --panel-shadow: 0 1px 0 var(--border-subtle);
+}
+
+/* --- Ambient background --------------------------------------------------
+   Drawn on a ::before rather than on body so it sits behind everything and
+   never affects layout or scrolling. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+[data-background="gradient"] body::before {
+  opacity: 1;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, color-mix(in srgb, var(--accent-from) 22%, transparent), transparent 65%),
+    radial-gradient(50rem 36rem at 92% 6%, color-mix(in srgb, var(--accent-to) 18%, transparent), transparent 60%);
+}
+
+[data-background="ambient"] body::before {
+  opacity: 1;
+  background:
+    radial-gradient(38rem 30rem at 78% 88%, color-mix(in srgb, var(--accent-to) 14%, transparent), transparent 70%),
+    radial-gradient(44rem 34rem at 8% 82%, color-mix(in srgb, var(--accent-from) 12%, transparent), transparent 72%);
+}
+
+[data-background="minimal"] body::before {
+  opacity: 1;
+  background: radial-gradient(
+    70rem 50rem at 50% -20%,
+    color-mix(in srgb, var(--accent-from) 8%, transparent),
+    transparent 70%
+  );
+}
+
+/* "static" and "none" both leave it at opacity 0; static keeps the flat
+   --bg-primary, which is what most people want. */
+
+/* --- Animations ---------------------------------------------------------- */
+[data-animations="reduced"] *,
+[data-animations="reduced"] *::before,
+[data-animations="reduced"] *::after {
+  animation-duration: 0.12s !important;
+  transition-duration: 0.08s !important;
+}
+
+[data-animations="off"] *,
+[data-animations="off"] *::before,
+[data-animations="off"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* --- Type --------------------------------------------------------------- */
+/* Tailwind sizes are all rem, so moving the root size scales the whole
+   interface proportionally rather than just paragraph text. */
+html[data-text-size="xlarge"] {
+  font-size: 20px;
+}
+
+html[data-line-spacing="tight"] {
+  --chat-leading: 1.45;
+}
+html[data-line-spacing="normal"] {
+  --chat-leading: 1.65;
+}
+html[data-line-spacing="relaxed"] {
+  --chat-leading: 1.9;
+}
+
+.chat-message {
+  line-height: var(--chat-leading, 1.65);
+}
+
+html[data-code-size="small"] {
+  --code-size: 0.78em;
+}
+html[data-code-size="medium"] {
+  --code-size: 0.875em;
+}
+html[data-code-size="large"] {
+  --code-size: 1em;
+}
+
+[data-bold-text="on"] .chat-message,
+[data-bold-text="on"] .settings-panel p,
+[data-bold-text="on"] .settings-panel li,
+[data-bold-text="on"] .settings-panel span {
+  font-weight: 500;
+}
+
+/* --- Message density and bubbles ----------------------------------------- */
+html[data-density="compact"] {
+  --message-gap: 0.5rem;
+  --message-pad-y: 0.4rem;
+  --message-pad-x: 0.75rem;
+}
+html[data-density="comfortable"] {
+  --message-gap: 1rem;
+  --message-pad-y: 0.625rem;
+  --message-pad-x: 0.875rem;
+}
+html[data-density="spacious"] {
+  --message-gap: 1.75rem;
+  --message-pad-y: 0.9rem;
+  --message-pad-x: 1.15rem;
+}
+
+.chat-stack {
+  gap: var(--message-gap, 1rem);
+}
+
+.chat-bubble {
+  padding: var(--message-pad-y, 0.625rem) var(--message-pad-x, 0.875rem);
+}
+
+html[data-bubble="rounded"] .chat-bubble {
+  border-radius: 1rem;
+}
+html[data-bubble="square"] .chat-bubble {
+  border-radius: 0.3rem;
+}
+/* Minimal drops the container entirely: no fill, no border, no padding —
+   the message is just text on the page. */
+html[data-bubble="minimal"] .chat-bubble {
+  border-radius: 0;
+  background: none !important;
+  background-image: none !important;
+  border: none !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+html[data-bubble="minimal"] .chat-bubble--user {
+  color: var(--text-primary);
+}
+
+/* --- High contrast -------------------------------------------------------
+   Raises border and secondary-text contrast rather than inverting anything.
+   The accent is left alone: it is user-chosen and already carries meaning. */
+[data-contrast="high"] {
+  --border-subtle: #6d7d78;
+  --text-secondary: #313d39;
+  --surface-hover: rgba(11, 21, 18, 0.12);
+}
+
+.dark[data-contrast="high"] {
+  --border-subtle: #7d8d88;
+  --text-secondary: #d3ded9;
+  --surface-hover: rgba(255, 255, 255, 0.16);
+}
+
+[data-contrast="high"] .settings-card,
+[data-contrast="high"] .chat-bubble {
+  border-width: 1.5px;
+}
+
+/* --- Larger touch targets ------------------------------------------------ */
+[data-large-targets="on"] button,
+[data-large-targets="on"] select,
+[data-large-targets="on"] input[type="text"],
+[data-large-targets="on"] input[type="password"],
+[data-large-targets="on"] input[type="email"] {
+  min-height: 2.75rem;
+}
+
+[data-large-targets="on"] .settings-nav-item {
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+}
+
+/* --- Settings surfaces --------------------------------------------------- */
+.settings-panel {
+  background-color: var(--surface-panel);
+  backdrop-filter: blur(var(--panel-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(140%);
+  box-shadow: var(--panel-shadow);
+}
+
+.settings-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.9rem;
+  background-color: var(--surface-raised);
+  overflow: hidden;
+}
+
+/* --- Focus ---------------------------------------------------------------
+   One visible focus treatment for every interactive element in settings.
+   :focus-visible so a mouse click does not paint a ring, but a keyboard tab
+   always does. */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent-solid);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* --- Slider -------------------------------------------------------------- */
+.settings-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--accent-solid);
+  border: 2px solid var(--bg-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.settings-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--accent-solid);
+  border: 2px solid var(--bg-secondary);
+  cursor: pointer;
+}
+
+.prose-hetex code {
+  font-size: var(--code-size, 0.875em);
 }

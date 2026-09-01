@@ -1,19 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { HetexLockup } from "@/components/logo";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // The idle timeout signs out with ?reason=idle so the return is explained
+  // rather than looking like a session that dropped for no reason.
+  useEffect(() => {
+    if (params.get("reason") === "idle") {
+      setNotice("You were signed out after a period of inactivity.");
+    }
+  }, [params]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,15 +43,27 @@ export default function LoginPage() {
     const res = await signIn("credentials", {
       email,
       password,
+      ...(needsTotp ? { totpCode } : {}),
       redirect: false,
     });
 
     setLoading(false);
+
     if (res?.error) {
+      if (res.error.startsWith("TOTP_REQUIRED")) {
+        // The password was right. Ask for the second factor rather than
+        // reporting a credential failure, which would be untrue and confusing.
+        const message = res.error.slice("TOTP_REQUIRED:".length);
+        setNeedsTotp(true);
+        setError(needsTotp ? message || "That code isn't right." : null);
+        setTotpCode("");
+        return;
+      }
       setError("Invalid email or password");
-    } else {
-      router.push("/chat");
+      return;
     }
+
+    router.push("/chat");
   }
 
   return (
@@ -72,13 +104,43 @@ export default function LoginPage() {
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {error && <p className="text-sm text-hetex-red-500">{error}</p>}
+          {needsTotp && (
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <ShieldCheck size={15} className="text-accent" />
+                Two-factor authentication
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">
+                Enter the six-digit code from your authenticator app, or one of
+                your recovery codes.
+              </p>
+              <input
+                autoFocus
+                inputMode="text"
+                autoComplete="one-time-code"
+                placeholder="000000"
+                aria-label="Authentication code"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value)}
+                className="focus-accent mt-2.5 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] px-3 py-2.5 text-center font-mono text-sm tracking-widest outline-none"
+              />
+            </div>
+          )}
+
+          {notice && (
+            <p className="text-sm text-[var(--text-secondary)]">{notice}</p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-hetex-red-500">
+              {error}
+            </p>
+          )}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (needsTotp && totpCode.trim().length < 6)}
             className="w-full rounded-lg bg-accent-gradient py-2.5 text-sm font-medium text-white disabled:opacity-60"
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in…" : needsTotp ? "Verify and sign in" : "Sign in"}
           </button>
         </form>
 

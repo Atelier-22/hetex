@@ -41,9 +41,91 @@ export const users = pgTable("users", {
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
   role: text("role").notNull().default("user"),
+
+  // Two-factor. The secret is a base32 TOTP seed; `totpEnabled` is what the
+  // login path checks, so a half-finished enrolment (secret written, never
+  // confirmed) cannot lock anybody out.
+  totpSecret: text("totp_secret"),
+  totpEnabled: boolean("totp_enabled").notNull().default(false),
+  totpConfirmedAt: timestamp("totp_confirmed_at", { withTimezone: true }),
+  // bcrypt hashes, not the codes themselves — a database dump must not be a
+  // list of working bypasses. Each is removed as it is used.
+  totpRecoveryCodes: jsonb("totp_recovery_codes")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * Profile fields, separate from `users` and from the settings blob.
+ *
+ * These are looked up on their own — a username has to be unique across the
+ * platform, and that is an index, not a scan of every account's jsonb.
+ */
+export const userProfiles = pgTable(
+  "user_profiles",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fullName: text("full_name"),
+    username: text("username"),
+    phone: text("phone"),
+    country: text("country"),
+    timezone: text("timezone"),
+    preferredName: text("preferred_name"),
+    preferredGreeting: text("preferred_greeting"),
+    pronunciation: text("pronunciation"),
+    birthday: text("birthday"),
+    occupation: text("occupation"),
+    interests: jsonb("interests").$type<string[]>().notNull().default([]),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    // Partial-unique is not expressible here, so uniqueness is enforced on the
+    // column and the route refuses a duplicate with a readable message. Nulls
+    // do not collide in Postgres, so accounts with no username are unaffected.
+    usernameIdx: uniqueIndex("user_profiles_username_idx").on(t.username),
+  })
+);
+
+/**
+ * Platform-wide configuration owned by administrators.
+ *
+ * One row. Kept in a table rather than the environment because a feature flag
+ * has to be changeable without a redeploy, and because the admin dashboard
+ * needs somewhere to write.
+ */
+export const platformConfig = pgTable("platform_config", {
+  id: text("id").primaryKey(),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: updatedAt(),
+});
+
+/** Bug reports, safety reports and feedback raised from Help & Support. */
+export const supportReports = pgTable(
+  "support_reports",
+  {
+    id: id(),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(), // bug | ai_response | safety | feedback | contact
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    // Diagnostics the reporter chose to attach, plus the message being reported.
+    meta: jsonb("meta").$type<Record<string, unknown>>(),
+    status: text("status").notNull().default("open"),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    kindIdx: index("support_reports_kind_idx").on(t.kind, t.status),
+    userIdx: index("support_reports_user_idx").on(t.userId),
+  })
+);
 
 export const userSettings = pgTable("user_settings", {
   id: id(),
@@ -95,6 +177,42 @@ export const userSettings = pgTable("user_settings", {
 
   exportRequestedAt: timestamp("export_requested_at", { withTimezone: true }),
   deleteRequestedAt: timestamp("delete_requested_at", { withTimezone: true }),
+
+  // ---- Grouped preferences ------------------------------------------------
+  //
+  // The scalar columns above are the ones something other than the settings
+  // screen reads: the chat service reads model/memory/history, the admin
+  // dashboard aggregates over them, and an index or a GROUP BY on jsonb would
+  // be the wrong shape for that.
+  //
+  // Everything below is only ever read as a whole document for one account, so
+  // a column per key would be ~140 columns and a migration per new toggle for
+  // no gain. One jsonb per group is the honest middle: normalised where it is
+  // queried, grouped where it is not.
+  //
+  // Each defaults to {} rather than to the group's defaults, so the meaning of
+  // "unset" stays "whatever the schema says today" — changing a default in
+  // code does not need a data migration.
+  aiPrefs: jsonb("ai_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  personality: jsonb("personality").$type<Record<string, unknown>>().notNull().default({}),
+  behavior: jsonb("behavior").$type<Record<string, unknown>>().notNull().default({}),
+  memoryPrefs: jsonb("memory_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  conversationPrefs: jsonb("conversation_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  voicePrefs: jsonb("voice_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  liveVoicePrefs: jsonb("live_voice_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  imagePrefs: jsonb("image_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  filePrefs: jsonb("file_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  appearance: jsonb("appearance").$type<Record<string, unknown>>().notNull().default({}),
+  languagePrefs: jsonb("language_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  accessibility: jsonb("accessibility").$type<Record<string, unknown>>().notNull().default({}),
+  notificationSettings: jsonb("notification_settings").$type<Record<string, unknown>>().notNull().default({}),
+  privacyPrefs: jsonb("privacy_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  securityPrefs: jsonb("security_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  safetyPrefs: jsonb("safety_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  projectPrefs: jsonb("project_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  libraryPrefs: jsonb("library_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  offlinePrefs: jsonb("offline_prefs").$type<Record<string, unknown>>().notNull().default({}),
+  advancedPrefs: jsonb("advanced_prefs").$type<Record<string, unknown>>().notNull().default({}),
 
   updatedAt: updatedAt(),
 });
@@ -169,20 +287,35 @@ export const projects = pgTable("projects", {
   updatedAt: updatedAt(),
 });
 
-export const conversations = pgTable("conversations", {
-  id: id(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  projectId: text("project_id").references(() => projects.id, {
-    onDelete: "set null",
-  }),
-  title: text("title").notNull().default("New Chat"),
-  model: text("model").notNull().default("standard"),
-  pinned: boolean("pinned").notNull().default(false),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull().default("New Chat"),
+    model: text("model").notNull().default("standard"),
+    pinned: boolean("pinned").notNull().default(false),
+    // "Do not remember this conversation" — checked before anything is written
+    // to memory, so the exclusion holds for every future turn too, not just the
+    // one where it was switched on.
+    excludeFromMemory: boolean("exclude_from_memory").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    // The retention sweeper scans by age within an account; without this it is
+    // a full table scan every time it runs.
+    userUpdatedIdx: index("conversations_user_updated_idx").on(
+      t.userId,
+      t.updatedAt
+    ),
+  })
+);
 
 export const messages = pgTable("messages", {
   id: id(),
@@ -229,15 +362,30 @@ export const messageFeedback = pgTable("message_feedback", {
   createdAt: createdAt(),
 });
 
-export const userMemory = pgTable("user_memory", {
-  id: id(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  content: text("content").notNull(),
-  source: text("source").notNull().default("manual"), // manual | inferred
-  createdAt: createdAt(),
-});
+export const userMemory = pgTable(
+  "user_memory",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    source: text("source").notNull().default("manual"), // manual | inferred
+    // preferences | projects | personalization | conversation. Which categories
+    // are written at all is a per-account setting, so this has to be stored
+    // rather than inferred at read time.
+    category: text("category").notNull().default("preferences"),
+    updatedAt: updatedAt(),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    userIdx: index("user_memory_user_idx").on(t.userId, t.category),
+  })
+);
+
+export const libraryAssetsRelations = relations(libraryAssets, ({ one }) => ({
+  user: one(users, { fields: [libraryAssets.userId], references: [users.id] }),
+}));
 
 // Relations (used for query-builder joins like
 // db.query.conversations.findMany({ with: { messages: true } }))
@@ -250,6 +398,14 @@ export const usersRelations = relations(users, ({ many, one }) => ({
     fields: [users.id],
     references: [userSettings.userId],
   }),
+  profile: one(userProfiles, {
+    fields: [users.id],
+    references: [userProfiles.userId],
+  }),
+}));
+
+export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
+  user: one(users, { fields: [userProfiles.userId], references: [users.id] }),
 }));
 
 export const conversationsRelations = relations(

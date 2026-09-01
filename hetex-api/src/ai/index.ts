@@ -1,14 +1,25 @@
 import type { AIProvider } from "./provider.interface";
 import { AnthropicProvider } from "./providers/anthropic.provider";
 import { DeepSeekProvider } from "./providers/deepseek.provider";
+import { LocalProvider } from "./providers/local.provider";
 
 // Registry pattern: adding a provider means writing one new file and adding one
 // line here. Nothing in the routes, services or UI needs to change — the model
 // list the frontend renders is derived from this.
+//
+// Order is offer order. Hosted providers come first because they are more
+// capable; Local AI is last but needs no key, so it is the one that is
+// available on a server with nothing configured at all.
 const providers: AIProvider[] = [
   new AnthropicProvider(),
   new DeepSeekProvider(),
+  new LocalProvider(),
 ];
+
+/** True for providers that send requests off this machine. */
+export function isHostedProvider(id: string): boolean {
+  return id !== "local";
+}
 
 export function getProvider(id?: string): AIProvider {
   const provider = id
@@ -42,11 +53,38 @@ export function availableModels() {
       value: m.id,
       label: m.label,
       description: m.description,
-      // Deliberately no provider name: the UI presents tiers by capability and
-      // names no vendor.
       capabilities: p.capabilities,
+      // The provider *id*, not its vendor name. Settings needs to know which
+      // models are local and which leave the machine — that is a privacy fact,
+      // not a vendor disclosure — while `displayName` stays server-side unless
+      // the platform config opts into revealing it.
+      provider: p.id,
+      local: p.id === "local",
     }))
   );
+}
+
+/**
+ * Provider status for the AI & Models screen.
+ *
+ * `vendor` is only populated when the caller has decided names may be shown —
+ * an admin, or a platform that has opted in. Everyone else sees the neutral
+ * label, matching what the assistant itself will say if asked.
+ */
+export function providerStatus(options: { revealNames?: boolean } = {}) {
+  return providers.map((p) => ({
+    id: p.id,
+    label: p.id === "local" ? "Local AI" : "Hosted AI",
+    vendor: options.revealNames ? p.displayName : null,
+    configured: p.isConfigured(),
+    local: p.id === "local",
+    capabilities: p.capabilities,
+    models: p.models.map((m) => ({
+      value: m.id,
+      label: m.label,
+      description: m.description,
+    })),
+  }));
 }
 
 /**

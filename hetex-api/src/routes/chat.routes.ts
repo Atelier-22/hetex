@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db";
 import { requireAuth, asyncHandler } from "../auth/middleware";
 import {
@@ -9,13 +9,17 @@ import {
   maybeTitleConversation,
   recordUsage,
   buildMessageHistory,
-  getSystemPrompt,
-  getUserPreferences,
+  buildSystemPrompt,
+  getChatContext,
 } from "../services/chat.service";
-import { providerForModel, resolveModelId } from "../ai";
-import type { ChatImage, StreamChunk } from "../ai";
+import { getProvider, providerForModel, resolveModelId } from "../ai";
+import type { ChatImage, ChatMessage, StreamChunk } from "../ai";
+import { selectModel } from "../ai/routing";
 import { generateLocal, isLocalModelAvailable } from "../ai/local-model";
 import { learnInBackground } from "../services/learning.service";
+import { getPlatformConfig } from "../settings/platform";
+import { checkLimit } from "../services/limits.service";
+import type { UserSettings } from "../settings/schema";
 
 export const chatRouter = Router();
 
@@ -26,7 +30,6 @@ export const chatRouter = Router();
  * That is only reasonable for modest files, hence the cap.
  */
 const MAX_LIBRARY_BYTES = 1_500_000; // ~1.5 MB of decoded image data
-const MAX_ATTACHMENT_BYTES = 5_000_000; // ~5 MB, rejected outright above this
 
 const NO_PROVIDER_MESSAGE =
   "No AI provider is configured on this server, so replies aren't available.";
@@ -41,8 +44,10 @@ const chatSchema = z.object({
   message: z.string().default(""),
   conversationId: z.string().optional(),
   projectId: z.string().optional(),
-  attachments: z.array(attachmentSchema).max(10).default([]),
+  attachments: z.array(attachmentSchema).max(20).default([]),
   webSearchEnabled: z.boolean().default(false),
+  /** Per-turn override of "remember this conversation". */
+  excludeFromMemory: z.boolean().optional(),
 });
 
 type Attachment = z.infer<typeof attachmentSchema>;
@@ -85,10 +90,6 @@ async function saveAttachmentsToLibrary(
  * running — the model needs the message, and the reply has to be written
  * somewhere before it is streamed. It is removed immediately afterwards, taking
  * its messages and attachments with it via ON DELETE CASCADE.
- *
- * The alternative, never persisting at all, would mean rewriting the whole
- * request path around an in-memory conversation for one setting. Deleting after
- * the fact leaves nothing behind either way.
  */
 async function discardConversation(conversationId: string) {
   await db
@@ -96,18 +97,26 @@ async function discardConversation(conversationId: string) {
     .where(eq(schema.conversations.id, conversationId));
 }
 
+/** Attachments belonging to this turn, removed once the reply is delivered. */
+async function discardTurnAttachments(conversationId: string) {
+  await db
+    .delete(schema.libraryAssets)
+    .where(eq(schema.libraryAssets.conversationId, conversationId));
+}
+
 /**
  * Last resort when the hosted provider fails outright.
  *
- * Returns null when there is no downloaded model or it cannot answer, so the
- * caller falls back to reporting the original provider error rather than
- * swallowing it. The local model sees the same system prompt — including the
- * verified-identity block — but only the current turn, not the history.
+ * Only runs when the account has left "fall back to the local model" on — it is
+ * a different model answering, and someone who has turned that off has said
+ * they would rather see the error.
  */
 async function localFallbackReply(
   prompt: string,
-  systemPrompt: string
+  systemPrompt: string,
+  settings: UserSettings
 ): Promise<string | null> {
+  if (!settings.ai.fallbackToLocal) return null;
   if (!prompt.trim() || !isLocalModelAvailable()) return null;
 
   try {
@@ -116,6 +125,48 @@ async function localFallbackReply(
   } catch (err) {
     console.error(
       "Local fallback failed:",
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
+/**
+ * The account's chosen fallback model, tried before the local one.
+ *
+ * Only used when the first attempt produced nothing at all — half an answer
+ * finished by a different model would read as one reply that changes voice
+ * mid-sentence.
+ */
+async function fallbackModelReply(
+  history: ChatMessage[],
+  systemPrompt: string,
+  settings: UserSettings,
+  failedModel: string
+): Promise<{ text: string; model: string } | null> {
+  const target = settings.advanced.fallbackModel;
+  if (!target || target === failedModel) return null;
+
+  const provider = providerForModel(target);
+  if (!provider.isConfigured()) return null;
+
+  try {
+    let text = "";
+    for await (const chunk of provider.streamCompletion(history, {
+      systemPrompt,
+      model: resolveModelId(target),
+      maxTokens: settings.advanced.maxOutputTokens,
+      ...(provider.capabilities.temperature
+        ? { temperature: settings.advanced.temperature }
+        : {}),
+    })) {
+      if (chunk.type === "text" && chunk.text) text += chunk.text;
+      else if (chunk.type === "error") return null;
+    }
+    return text.trim() ? { text, model: target } : null;
+  } catch (err) {
+    console.error(
+      "Fallback model failed:",
       err instanceof Error ? err.message : err
     );
     return null;
@@ -136,52 +187,120 @@ chatRouter.post(
       return;
     }
 
-    const { message, conversationId, projectId, attachments, webSearchEnabled } =
-      parsed.data;
+    const {
+      message,
+      conversationId,
+      projectId,
+      attachments,
+      webSearchEnabled,
+      excludeFromMemory,
+    } = parsed.data;
 
     if (!message.trim() && attachments.length === 0) {
       res.status(400).json({ error: "Message cannot be empty" });
       return;
     }
 
+    const config = await getPlatformConfig();
+
+    if (!config.features.chat) {
+      res.status(503).json({
+        error: "Chat is currently unavailable. An administrator has turned it off.",
+      });
+      return;
+    }
+
+    // Enforced here, not in the browser. A patched client changes nothing.
+    const allowance = await checkLimit(userId, "message");
+    if (!allowance.allowed) {
+      res.status(429).json({ error: allowance.message, limit: allowance.limit });
+      return;
+    }
+
+    const { user, settings, memoryEntries } = await getChatContext(userId);
+
+    // ---- Attachment policy ------------------------------------------------
+    if (attachments.length > 0 && !config.features.fileUploads) {
+      res.status(503).json({
+        error: "File uploads are currently unavailable on this server.",
+      });
+      return;
+    }
+
+    if (attachments.length > config.limits.maxAttachmentsPerMessage) {
+      res.status(400).json({
+        error: `You can attach at most ${config.limits.maxAttachmentsPerMessage} files to one message.`,
+      });
+      return;
+    }
+
+    const maxBytes = config.limits.maxUploadMb * 1_000_000;
     const oversized = attachments.find(
-      (a) => decodedByteLength(a.base64) > MAX_ATTACHMENT_BYTES
+      (a) => decodedByteLength(a.base64) > maxBytes
     );
     if (oversized) {
       res.status(413).json({
-        error: `"${oversized.name}" is larger than the 5 MB attachment limit.`,
+        error: `"${oversized.name}" is larger than the ${config.limits.maxUploadMb} MB attachment limit.`,
       });
       return;
     }
 
-    // Preferences are needed before the provider, since the chosen model is
-    // what decides which provider answers.
-    const {
-      user,
-      assistantName,
-      responseStyle,
-      model,
-      memoryEntries,
-      customInstructions,
-      chatHistoryEnabled,
-    } = await getUserPreferences(userId);
+    const disallowed = attachments.find(
+      (a) => !config.allowedFileTypes.includes(a.mediaType)
+    );
+    if (disallowed) {
+      res.status(415).json({
+        error: `"${disallowed.name}" is a file type this server does not accept.`,
+      });
+      return;
+    }
 
-    // `model` is the public tier stored against the account; the provider needs
-    // the vendor's own identifier, which never leaves the server.
-    const provider = providerForModel(model);
-    const vendorModel = resolveModelId(model);
+    // ---- Model selection --------------------------------------------------
+    const imageAttachments = attachments.filter((a) =>
+      a.mediaType.startsWith("image/")
+    );
+    const otherAttachments = attachments.filter(
+      (a) => !a.mediaType.startsWith("image/")
+    );
 
-    // A missing API key is no longer fatal: a downloaded local model answers on
-    // its own. Only when neither exists is there nothing to reply with.
+    const analyseImages =
+      settings.images.analysisEnabled &&
+      settings.images.autoAnalyzeUploads &&
+      config.features.imageAnalysis;
+
+    const routing = selectModel(settings, {
+      message,
+      hasImages: imageAttachments.length > 0 && analyseImages,
+      historyLength: 0,
+    });
+
+    let chosenModel = routing.model;
+
+    // "Process locally only" is a privacy promise, so it overrides the model
+    // choice rather than being one input among several.
+    if (settings.privacy.localOnly || settings.ai.provider === "local") {
+      const localProvider = getProvider("local");
+      const localModel = localProvider.models[0]?.id;
+      if (!localModel) {
+        res.status(503).json({
+          error:
+            "This account is set to process everything locally, but no local model is available on this server.",
+        });
+        return;
+      }
+      chosenModel = localModel;
+    }
+
+    const provider = providerForModel(chosenModel);
+    const vendorModel = resolveModelId(chosenModel);
+
     const providerUsable = provider.isConfigured();
     if (!providerUsable && !isLocalModelAvailable()) {
-      res.status(503).json({
-        error:
-          "No AI provider is configured on this server, so replies aren't available.",
-      });
+      res.status(503).json({ error: NO_PROVIDER_MESSAGE });
       return;
     }
 
+    // ---- Conversation -----------------------------------------------------
     const conversation = await getOrCreateConversation({
       userId,
       conversationId,
@@ -189,12 +308,28 @@ chatRouter.post(
     });
     const isFirstMessage = (conversation.messages?.length ?? 0) === 0;
 
-    const imageAttachments = attachments.filter((a) =>
-      a.mediaType.startsWith("image/")
-    );
-    const otherAttachments = attachments.filter(
-      (a) => !a.mediaType.startsWith("image/")
-    );
+    if (excludeFromMemory !== undefined) {
+      await db
+        .update(schema.conversations)
+        .set({ excludeFromMemory })
+        .where(eq(schema.conversations.id, conversation.id));
+    }
+    const memoryExcluded =
+      excludeFromMemory ?? conversation.excludeFromMemory ?? false;
+
+    // Project instructions ride along with the prompt when the account has
+    // project context switched on.
+    let projectInstructions: string | null = null;
+    if (conversation.projectId && settings.projects.useProjectContext) {
+      const project = await db.query.projects.findFirst({
+        where: and(
+          eq(schema.projects.id, conversation.projectId),
+          eq(schema.projects.userId, userId)
+        ),
+        columns: { instructions: true },
+      });
+      projectInstructions = project?.instructions ?? null;
+    }
 
     let storedContent = message;
     if (attachments.length > 0) {
@@ -210,7 +345,7 @@ chatRouter.post(
     await saveMessage(conversation.id, "user", storedContent);
     await recordUsage(userId, "message");
 
-    if (attachments.length > 0) {
+    if (attachments.length > 0 && settings.images.saveUploads) {
       await saveAttachmentsToLibrary(
         userId,
         conversation.id,
@@ -220,40 +355,57 @@ chatRouter.post(
       await recordUsage(userId, "tool_call");
     }
 
-    if (isFirstMessage) {
+    if (isFirstMessage && settings.conversation.autoTitle) {
       await maybeTitleConversation(
         conversation.id,
         message || attachments[0]?.name || "New Chat"
       );
     }
 
-    if (webSearchEnabled) await recordUsage(userId, "tool_call");
+    // ---- Turn-specific prompt notes ---------------------------------------
+    const wantsSearch = settings.ai.webSearch && config.features.webSearch;
+    const canSearch = providerUsable && provider.capabilities.webSearch && wantsSearch;
 
-    // The search tool is offered on every message, not only when the composer
-    // toggle is on. Gating it meant the model genuinely could not search by
-    // default and said so — which read as "this product cannot browse" rather
-    // than "you did not switch it on". The model decides per message whether a
-    // query is warranted, so an offline question costs nothing extra.
-    //
-    // The toggle now means "prefer to search", for when the user knows the
-    // answer needs looking up and the model might not.
-    const canSearch = providerUsable && provider.capabilities.webSearch;
+    if (webSearchEnabled && canSearch) await recordUsage(userId, "tool_call");
 
-    const webSearchNote = !canSearch
-      ? // Without this the model claims live knowledge it does not have. It
+    const notes: string[] = [];
+
+    if (canSearch) {
+      notes.push(
+        `\n\nYou can search the web. Use it whenever an answer depends on current information — news, prices, releases, anything that changes, or anything you are not confident is still true. Search rather than saying you cannot access the internet, because you can. For things that do not change, answer directly without searching.`
+      );
+      if (webSearchEnabled) {
+        notes.push(
+          `\n\nThe user has explicitly asked you to look this up. Search the web for this message even if you think you know the answer, and cite what you used.`
+        );
+      }
+    } else {
+      notes.push(
+        // Without this the model claims live knowledge it does not have. It
         // must know its own limits for this turn.
-        `\n\nYou cannot search the web on this model. If the answer depends on current information, say plainly that you can't look it up here and suggest switching to the Standard model in Settings, rather than guessing.`
-      : webSearchEnabled
-        ? `\n\nThe user has explicitly asked you to look this up. Search the web for this message even if you think you know the answer, and cite what you used.`
-        : "";
+        `\n\nYou cannot search the web on this model. If the answer depends on current information, say plainly that you can't look it up here, rather than guessing.`
+      );
+    }
 
     // An image sent to a text-only model would otherwise vanish silently and
     // the reply would look like the model simply ignored it.
     const droppedImages =
-      imageAttachments.length > 0 && !provider.capabilities.images;
-    const imageNote = droppedImages
-      ? `\n\nThe user attached an image, but this model cannot see images. Tell them so directly and suggest switching to the Standard model in Settings if they need it looked at.`
-      : "";
+      imageAttachments.length > 0 &&
+      (!provider.capabilities.images || !analyseImages);
+
+    if (droppedImages) {
+      notes.push(
+        settings.images.analysisEnabled
+          ? `\n\nThe user attached an image, but it cannot be looked at on this model. Tell them so directly and suggest switching model in Settings if they need it read.`
+          : `\n\nThe user attached an image, but they have turned image analysis off in Settings. Say so plainly and tell them where to turn it back on.`
+      );
+    }
+
+    if (settings.privacy.localOnly) {
+      notes.push(
+        `\n\nThis account is set to process everything on this server. You have no web access and no external tools for this conversation.`
+      );
+    }
 
     const history = await buildMessageHistory(conversation.id);
     // Images ride along with the live turn only — they are not replayed into
@@ -266,23 +418,66 @@ chatRouter.post(
       }));
     }
 
-    const systemPrompt =
-      getSystemPrompt({
-        user,
-        assistantName,
-        responseStyle,
-        memoryEntries,
-        customInstructions,
-      }) +
-      webSearchNote +
-      imageNote;
+    const systemPrompt = buildSystemPrompt({
+      user,
+      settings,
+      memoryEntries,
+      projectInstructions,
+      notes,
+    });
+
+    const generation = {
+      systemPrompt,
+      model: vendorModel,
+      webSearch: canSearch,
+      maxTokens: settings.advanced.maxOutputTokens,
+      // Only sent where the provider accepts one. Some vendors reject the
+      // parameter on their current models, so sending it there would fail the
+      // request rather than change the output.
+      ...(provider.capabilities.temperature
+        ? { temperature: settings.advanced.temperature }
+        : {}),
+    };
 
     const title =
-      isFirstMessage && message
+      isFirstMessage && message && settings.conversation.autoTitle
         ? message.slice(0, 60).trim()
         : conversation.title;
 
-    const wantsStream = (req.headers.accept ?? "").includes("text/event-stream");
+    /** Runs after a reply has been delivered, never before. */
+    const afterReply = async (fullText: string) => {
+      if (fullText.trim() && settings.memory.enabled && !memoryExcluded) {
+        learnInBackground({
+          userId,
+          userMessage: message,
+          assistantMessage: fullText,
+        });
+      }
+
+      if (!settings.conversation.saveConversations) {
+        await discardConversation(conversation.id);
+      } else if (
+        settings.images.deleteAfterConversation ||
+        settings.files.deleteAfterConversation
+      ) {
+        await discardTurnAttachments(conversation.id);
+      }
+    };
+
+    const meta = {
+      conversationId: conversation.id,
+      title,
+      model: chosenModel,
+      routed: routing.routed,
+      routingReason: routing.reason,
+      task: routing.task,
+      processedLocally: provider.id === "local",
+      excludeFromMemory: memoryExcluded,
+    };
+
+    const wantsStream =
+      (req.headers.accept ?? "").includes("text/event-stream") &&
+      settings.advanced.streaming;
 
     // ---- Streaming path (web client) ----
     if (wantsStream) {
@@ -299,7 +494,7 @@ chatRouter.post(
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       };
 
-      send("meta", { conversationId: conversation.id, title });
+      send("meta", meta);
 
       let fullText = "";
       let providerError: string | null = null;
@@ -310,11 +505,7 @@ chatRouter.post(
 
       try {
         const stream = providerUsable
-          ? provider.streamCompletion(history, {
-              systemPrompt,
-              model: vendorModel,
-              webSearch: canSearch,
-            })
+          ? provider.streamCompletion(history, generation)
           : ([{ type: "error", error: NO_PROVIDER_MESSAGE }] as StreamChunk[]);
 
         for await (const chunk of stream) {
@@ -334,16 +525,31 @@ chatRouter.post(
         }
 
         if (providerError && !clientGone) {
-          // Only a turn that produced nothing is worth retrying locally.
-          // Half an answer plus a different model finishing it would read as
-          // one reply that changes voice mid-sentence.
-          const local = fullText.trim()
+          // Only a turn that produced nothing is worth retrying. Half an answer
+          // plus a different model finishing it would read as one reply that
+          // changes voice mid-sentence.
+          const retry = fullText.trim()
             ? null
-            : await localFallbackReply(message, systemPrompt);
+            : await fallbackModelReply(
+                history,
+                systemPrompt,
+                settings,
+                chosenModel
+              );
 
-          if (local) {
+          const local =
+            retry || fullText.trim()
+              ? null
+              : await localFallbackReply(message, systemPrompt, settings);
+
+          if (retry) {
+            fullText = retry.text;
+            send("chunk", { text: retry.text });
+            send("meta", { ...meta, model: retry.model, fellBack: true });
+          } else if (local) {
             fullText = local;
             send("chunk", { text: local });
+            send("meta", { ...meta, processedLocally: true, fellBack: true });
           } else {
             send("error", { message: providerError });
           }
@@ -355,16 +561,7 @@ chatRouter.post(
           await saveMessage(conversation.id, "assistant", fullText);
         }
 
-        // After the reply is out, not before — this must never delay it.
-        if (fullText.trim()) {
-          learnInBackground({
-            userId,
-            userMessage: message,
-            assistantMessage: fullText,
-          });
-        }
-
-        if (!chatHistoryEnabled) await discardConversation(conversation.id);
+        await afterReply(fullText);
 
         if (!clientGone) send("done", {});
       } catch (err) {
@@ -388,11 +585,7 @@ chatRouter.post(
     if (!providerUsable) {
       streamError = NO_PROVIDER_MESSAGE;
     } else {
-      for await (const chunk of provider.streamCompletion(history, {
-        systemPrompt,
-        model: vendorModel,
-        webSearch: canSearch,
-      })) {
+      for await (const chunk of provider.streamCompletion(history, generation)) {
         if (chunk.type === "text" && chunk.text) fullText += chunk.text;
         else if (chunk.type === "sources" && chunk.sources)
           collectedSources.push(...chunk.sources);
@@ -402,8 +595,20 @@ chatRouter.post(
     }
 
     if (streamError && !fullText) {
-      const local = await localFallbackReply(message, systemPrompt);
-      if (local) {
+      const retry = await fallbackModelReply(
+        history,
+        systemPrompt,
+        settings,
+        chosenModel
+      );
+      const local = retry
+        ? null
+        : await localFallbackReply(message, systemPrompt, settings);
+
+      if (retry) {
+        fullText = retry.text;
+        streamError = null;
+      } else if (local) {
         fullText = local;
         streamError = null;
       } else {
@@ -414,21 +619,15 @@ chatRouter.post(
 
     if (fullText.trim().length > 0) {
       await saveMessage(conversation.id, "assistant", fullText);
-      learnInBackground({
-        userId,
-        userMessage: message,
-        assistantMessage: fullText,
-      });
     }
 
-    if (!chatHistoryEnabled) await discardConversation(conversation.id);
+    await afterReply(fullText);
 
     res.json({
-      conversationId: conversation.id,
-      title,
+      ...meta,
       reply: fullText,
       ...(collectedSources.length ? { sources: collectedSources } : {}),
-      ...(chatHistoryEnabled ? {} : { retained: false }),
+      ...(settings.conversation.saveConversations ? {} : { retained: false }),
       ...(streamError ? { warning: streamError } : {}),
     });
   })

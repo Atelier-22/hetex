@@ -1,8 +1,10 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import { Cloud, HardDrive } from "lucide-react";
 import { CodeBlock } from "./code-block";
 import { MessageActions } from "./message-actions";
+import { useSettingsGroup } from "@/lib/settings/store";
 
 export function MessageBubble({
   id,
@@ -12,6 +14,10 @@ export function MessageBubble({
   conversationId,
   isStreaming,
   onRetry,
+  model,
+  processedLocally,
+  routingReason,
+  showTypingIndicator = true,
 }: {
   id?: string;
   role: "user" | "assistant";
@@ -20,7 +26,15 @@ export function MessageBubble({
   conversationId?: string;
   isStreaming?: boolean;
   onRetry?: () => void;
+  /** Set when "Show which model answered" is on. */
+  model?: string;
+  processedLocally?: boolean;
+  /** Developer mode only. */
+  routingReason?: string;
+  showTypingIndicator?: boolean;
 }) {
+  const behavior = useSettingsGroup("behavior");
+
   const isUser = role === "user";
   const time =
     timestamp &&
@@ -34,38 +48,50 @@ export function MessageBubble({
       <div
         // Wider on a phone: 85% of a narrow screen wastes the margin without
         // helping readability, which is what that limit is for on desktop.
-        className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed sm:max-w-[85%] sm:px-4 sm:text-sm ${
+        //
+        // chat-bubble and chat-message carry the density, shape and line-height
+        // that Appearance controls; the padding and radius live in CSS so a
+        // preference change does not need this component to re-render.
+        className={`chat-bubble chat-message max-w-[92%] text-[15px] sm:max-w-[85%] sm:text-sm ${
           isUser
-            ? "bg-accent-gradient text-white"
-            : "bg-[var(--bg-secondary)] border border-[var(--border-subtle)]"
+            ? "chat-bubble--user bg-accent-gradient text-white"
+            : "border border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
         }`}
       >
         {isUser ? (
           <span className="whitespace-pre-wrap">{content}</span>
         ) : !content ? (
-          // Waiting on the first token. A static ellipsis is indistinguishable
-          // from a stalled request; movement says the connection is alive.
-          <span
-            className="flex items-center gap-1 py-1"
-            role="status"
-            aria-label="Hetex AI is typing"
-          >
-            {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--text-secondary)]"
-                style={{ animationDelay: `${i * 0.15}s` }}
-              />
-            ))}
-          </span>
-        ) : (
+          showTypingIndicator ? (
+            // Waiting on the first token. A static ellipsis is indistinguishable
+            // from a stalled request; movement says the connection is alive.
+            <span
+              className="flex items-center gap-1 py-1"
+              role="status"
+              aria-label="Hetex AI is typing"
+            >
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--text-secondary)]"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </span>
+          ) : (
+            <span className="sr-only" role="status">
+              Waiting for a reply
+            </span>
+          )
+        ) : behavior.useMarkdown ? (
           <div className="prose-hetex">
             <ReactMarkdown
               components={{
                 code({ className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || "");
                   const isBlock = className?.includes("language-");
-                  if (isBlock) {
+                  // With code formatting off the model is asked not to fence
+                  // code, but an older message may still contain a block.
+                  if (isBlock && behavior.codeFormatting) {
                     return (
                       <CodeBlock
                         language={match?.[1]}
@@ -84,12 +110,24 @@ export function MessageBubble({
               {content}
             </ReactMarkdown>
           </div>
+        ) : (
+          // Markdown off: show exactly what came back, unrendered.
+          <span className="whitespace-pre-wrap">{content}</span>
         )}
       </div>
 
-      {time && (
-        <span className="mt-1 px-1 text-[11px] text-[var(--text-secondary)]">
+      {(time || model) && (
+        <span className="mt-1 flex flex-wrap items-center gap-2 px-1 text-[11px] text-[var(--text-secondary)]">
           {time}
+          {model && (
+            <span className="flex items-center gap-1">
+              {processedLocally ? <HardDrive size={10} /> : <Cloud size={10} />}
+              {model}
+            </span>
+          )}
+          {routingReason && (
+            <span className="font-mono opacity-70">{routingReason}</span>
+          )}
         </span>
       )}
 

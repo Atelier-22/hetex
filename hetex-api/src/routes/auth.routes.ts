@@ -6,6 +6,7 @@ import { db, schema } from "../db";
 import { signToken } from "../auth/jwt";
 import { createSession } from "../auth/sessions";
 import { requireAuth, asyncHandler } from "../auth/middleware";
+import { verifyCode } from "../auth/totp";
 
 export const authRouter = Router();
 
@@ -18,7 +19,27 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  /** A 6-digit authenticator code, or one recovery code. */
+  totpCode: z.string().max(40).optional(),
 });
+
+/**
+ * Which stored recovery hash this code matches, or -1.
+ *
+ * Every hash is compared even after a match so the time taken does not reveal
+ * how far down the list the code was.
+ */
+async function findRecoveryCode(
+  code: string,
+  hashes: string[]
+): Promise<number> {
+  const normalised = code.trim().toLowerCase();
+  let found = -1;
+  for (let i = 0; i < hashes.length; i++) {
+    if (await bcrypt.compare(normalised, hashes[i])) found = i;
+  }
+  return found;
+}
 
 function publicUser(user: typeof schema.users.$inferSelect) {
   return {
@@ -98,6 +119,46 @@ authRouter.post(
     if (!user || !valid) {
       res.status(401).json({ error: "Invalid email or password" });
       return;
+    }
+
+    // Second factor, checked only after the password is known to be right —
+    // otherwise the "enter your code" prompt itself would confirm that an email
+    // is registered and its password correct.
+    if (user.totpEnabled && user.totpSecret) {
+      const code = parsed.data.totpCode?.trim();
+
+      if (!code) {
+        res.status(401).json({
+          error: "Enter the code from your authenticator app.",
+          requiresTotp: true,
+        });
+        return;
+      }
+
+      const authenticated = verifyCode(user.totpSecret, code);
+      const recoveryIndex = authenticated
+        ? -1
+        : await findRecoveryCode(code, user.totpRecoveryCodes);
+
+      if (!authenticated && recoveryIndex === -1) {
+        res.status(401).json({
+          error: "That code isn't right. Check the app, or use a recovery code.",
+          requiresTotp: true,
+        });
+        return;
+      }
+
+      // A recovery code is single-use. Spending it here is what makes the list
+      // finite rather than a permanent second password.
+      if (recoveryIndex >= 0) {
+        const remaining = user.totpRecoveryCodes.filter(
+          (_, i) => i !== recoveryIndex
+        );
+        await db
+          .update(schema.users)
+          .set({ totpRecoveryCodes: remaining, updatedAt: new Date() })
+          .where(eq(schema.users.id, user.id));
+      }
     }
 
     // Each sign-in is its own session, so the Security screen can list devices

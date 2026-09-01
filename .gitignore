@@ -12,12 +12,12 @@
 # --- Dependencies ---
 node_modules/
 
-# --- Next.js (aviel-web) ---
+# --- Next.js (Aviel-web) ---
 .next/
 out/
 next-env.d.ts
 
-# --- Expo / React Native (aviel-mobile) ---
+# --- Expo / React Native (Aviel-mobile) ---
 .expo/
 dist/
 web-build/
@@ -25,8 +25,8 @@ expo-env.d.ts
 .metro-health-check*
 .kotlin/
 *.orig.*
-/aviel-mobile/ios/
-/aviel-mobile/android/
+/Aviel-mobile/ios/
+/Aviel-mobile/android/
 
 # --- Local database & uploads ---
 *.db

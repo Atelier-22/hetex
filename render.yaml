@@ -9,7 +9,7 @@
 # READ THIS BEFORE RE-APPLYING THIS BLUEPRINT TO AN EXISTING DEPLOYMENT
 # ---------------------------------------------------------------------------
 #
-# Every name below was changed from "hetex" to "aviel". Render matches existing
+# Every name below was changed from "hetex" to "Aviel". Render matches existing
 # resources by name, so applying this file to a deployment created under the old
 # names does not rename anything — it provisions NEW resources beside the old
 # ones, and the new API points at a NEW EMPTY DATABASE. Existing accounts,
@@ -18,15 +18,20 @@
 #
 # What can and cannot be renamed on a live Render deployment:
 #
-#   service name (aviel-api)   CAN be renamed, in the service's own Settings.
+#   service name (Aviel-api)   CAN be renamed, in the service's own Settings.
 #                              Do that first so this file matches it.
-#   disk name (aviel-models)   CAN be renamed in the service's Disks settings.
+#   disk name (Aviel-models)   CAN be renamed in the service's Disks settings.
 #   database name (aviel-db)   CAN be renamed — it is only Render's label.
 #   databaseName / user        CANNOT. Both are fixed inside Postgres when the
 #                              instance is created. Renaming them here has no
 #                              effect on a live database, and re-applying the
 #                              blueprint is what triggers the empty-database
 #                              outcome described above.
+#
+# These three stay lowercase deliberately, and are the only names in the project
+# that do. Postgres folds an unquoted identifier to lowercase, so writing
+# "Aviel" here would produce a database called "aviel" anyway — the capital
+# would be a claim the database does not honour rather than a rename.
 #
 # If the internal database name and role genuinely have to become "aviel",
 # that is a data migration, not a config change:
@@ -45,11 +50,11 @@
 
 services:
   - type: web
-    name: aviel-api
+    name: Aviel-api
     runtime: node
     plan: free
     region: oregon
-    rootDir: aviel-api
+    rootDir: Aviel-api
     # --include=dev is required: NODE_ENV=production makes npm skip
     # devDependencies, which is where TypeScript lives. Without it the build has
     # no compiler and falls back to whatever tsc it can find.
@@ -65,7 +70,7 @@ services:
     # disk instead. Note that disks require a paid instance type — on the free
     # plan this block has to go, and the model is re-downloaded each deploy.
     disk:
-      name: aviel-models
+      name: Aviel-models
       mountPath: /models
       sizeGB: 5
     envVars:

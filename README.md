@@ -10,13 +10,13 @@ assistant can draw on. It runs on the web and on phones, off one backend.
 
 | Folder | What it is | Runs on |
 | --- | --- | --- |
-| [`aviel-api/`](aviel-api/) | Express + PostgreSQL API. Owns the database, auth, and every call to Claude | Render |
-| [`aviel-web/`](aviel-web/) | Next.js web frontend | Vercel |
-| [`aviel-mobile/`](aviel-mobile/) | React Native + Expo app | Expo / EAS |
+| [`Aviel-api/`](Aviel-api/) | Express + PostgreSQL API. Owns the database, auth, and every call to Claude | Render |
+| [`Aviel-web/`](Aviel-web/) | Next.js web frontend | Vercel |
+| [`Aviel-mobile/`](Aviel-mobile/) | React Native + Expo app | Expo / EAS |
 
 ```
   Browser  ──┐
-             ├──►  aviel-api (Render)  ──►  PostgreSQL
+             ├──►  Aviel-api (Render)  ──►  PostgreSQL
   Phone    ──┘            │
                           └──────────────►  Claude (Anthropic)
 ```
@@ -29,21 +29,21 @@ API key never leaves the backend — neither client holds a secret.
 
 ```bash
 # Backend — start this first, the clients need it
-cd aviel-api
+cd Aviel-api
 npm install
 cp .env.example .env      # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
 npm run dev               # http://localhost:4000
 
 # Web frontend
-cd aviel-web
+cd Aviel-web
 npm install
 cp .env.example .env.local  # set NEXTAUTH_SECRET
 npm run dev                 # http://localhost:3000
 ```
 
 Each project has its own README with the detail:
-[aviel-api](aviel-api/README.md) · [aviel-web](aviel-web/README.md) ·
-[aviel-mobile](aviel-mobile/README.md)
+[Aviel-api](Aviel-api/README.md) · [Aviel-web](Aviel-web/README.md) ·
+[Aviel-mobile](Aviel-mobile/README.md)
 
 ## Deployment
 

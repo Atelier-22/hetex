@@ -4,9 +4,9 @@ Three pieces, three places:
 
 | Piece | Goes to | What it is |
 | --- | --- | --- |
-| [`aviel-api/`](aviel-api/) | **Render** — web service + Postgres | Express API. Owns the database, auth, and every call to Claude |
-| [`aviel-web/`](aviel-web/) | **Vercel** | Next.js frontend. No database, no API keys — it calls the Render API |
-| [`aviel-mobile/`](aviel-mobile/) | Expo / EAS | React Native app. Calls the same Render API |
+| [`Aviel-api/`](Aviel-api/) | **Render** — web service + Postgres | Express API. Owns the database, auth, and every call to Claude |
+| [`Aviel-web/`](Aviel-web/) | **Vercel** | Next.js frontend. No database, no API keys — it calls the Render API |
+| [`Aviel-mobile/`](Aviel-mobile/) | Expo / EAS | React Native app. Calls the same Render API |
 
 The frontend holds no secrets and talks to nothing but the API. The API is the
 only thing that touches Postgres or the Anthropic key.
@@ -28,7 +28,7 @@ both resources itself.
 
 1. [render.com](https://render.com) → **New** → **Blueprint**
 2. Connect the `aviel` repo. Render reads `render.yaml` and shows a web service
-   (`aviel-api`) plus a Postgres database (`aviel-db`)
+   (`Aviel-api`) plus a Postgres database (`aviel-db`)
 3. It will prompt for the two values marked `sync: false`:
 
    | Variable | Value |
@@ -42,7 +42,7 @@ both resources itself.
 4. Click apply. First build takes a few minutes.
 
 **No manual database setup is needed.** The service applies its own migrations
-at boot from [`aviel-api/drizzle/`](aviel-api/drizzle/) — a fresh database
+at boot from [`Aviel-api/drizzle/`](Aviel-api/drizzle/) — a fresh database
 provisions itself on first start. If migrations fail the process exits rather
 than serving requests against a half-built schema, so a red deploy means read
 the logs, don't retry blindly.
@@ -64,7 +64,7 @@ the service up manually instead (**New → Web Service**):
 
 | Field | Value |
 | --- | --- |
-| Root Directory | `aviel-api` |
+| Root Directory | `Aviel-api` |
 | Region | same as the database |
 | Build Command | `npm ci --include=dev && npm run build` |
 | Start Command | `npm start` |
@@ -91,7 +91,7 @@ Copy the service URL — something like `https://aviel-api.onrender.com`.
 ## 2. Vercel — frontend
 
 1. [vercel.com](https://vercel.com) → **Add New** → **Project** → import `aviel`
-2. **Root Directory: `aviel-web`** — this is the one setting that matters. It's a
+2. **Root Directory: `Aviel-web`** — this is the one setting that matters. It's a
    monorepo; Vercel has to be told which folder holds the Next.js app
 3. Environment variables:
 
@@ -113,7 +113,7 @@ Copy the service URL — something like `https://aviel-api.onrender.com`.
 
 ## 3. Close the loop
 
-Back in Render → `aviel-api` → **Environment**, set `CORS_ORIGINS` to your real
+Back in Render → `Aviel-api` → **Environment**, set `CORS_ORIGINS` to your real
 Vercel URL:
 
 ```
@@ -131,7 +131,7 @@ the whole chain: browser → Vercel → Render → Postgres → Claude and back.
 Point the app at the same API and build:
 
 ```bash
-cd aviel-mobile
+cd Aviel-mobile
 EXPO_PUBLIC_API_URL=https://aviel-api.onrender.com npx expo start
 ```
 
@@ -139,7 +139,7 @@ For a real installable build, set `EXPO_PUBLIC_API_URL` in your EAS build
 profile and run `npx eas build --platform android --profile preview`.
 
 Testing against the deployed backend removes the same-Wi-Fi requirement in
-[aviel-mobile/README.md](aviel-mobile/README.md) — that only applies when the
+[Aviel-mobile/README.md](Aviel-mobile/README.md) — that only applies when the
 API runs on your laptop.
 
 ---
@@ -153,13 +153,13 @@ Three terminals, or two if you skip mobile.
 createdb aviel
 
 # 2. Backend
-cd aviel-api
+cd Aviel-api
 npm install
 cp .env.example .env       # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
 npm run dev                # http://localhost:4000, migrates on boot
 
 # 3. Frontend
-cd aviel-web
+cd Aviel-web
 npm install
 cp .env.example .env.local # set NEXTAUTH_SECRET
 npm run dev                # http://localhost:3000
@@ -173,7 +173,7 @@ than a style preference.
 
 ## Environment variables in one place
 
-**aviel-api (Render)**
+**Aviel-api (Render)**
 
 | Variable | Required | Notes |
 | --- | --- | --- |
@@ -185,7 +185,7 @@ than a style preference.
 | `JWT_EXPIRES_IN` | no | Defaults to `30d` |
 | `PORT` | no | Render sets this |
 
-**aviel-web (Vercel)**
+**Aviel-web (Vercel)**
 
 | Variable | Required | Notes |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ than a style preference.
 | `NEXTAUTH_SECRET` | yes | Encrypts the session cookie |
 | `NEXTAUTH_URL` | yes | Must match the deployed URL exactly |
 
-**aviel-mobile (Expo/EAS)**
+**Aviel-mobile (Expo/EAS)**
 
 | Variable | Required | Notes |
 | --- | --- | --- |

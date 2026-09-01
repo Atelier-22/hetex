@@ -15,6 +15,7 @@ import {
 import { getProvider, providerForModel, resolveModelId } from "../ai";
 import type { ChatImage, ChatMessage, StreamChunk } from "../ai";
 import { selectModel } from "../ai/routing";
+import { resolveThinkMode } from "../ai/think";
 import { generateLocal, isLocalModelAvailable } from "../ai/local-model";
 import { learnInBackground } from "../services/learning.service";
 import { getPlatformConfig } from "../settings/platform";
@@ -48,6 +49,8 @@ const chatSchema = z.object({
   webSearchEnabled: z.boolean().default(false),
   /** Per-turn override of "remember this conversation". */
   excludeFromMemory: z.boolean().optional(),
+  /** Per-turn override of the account's standing think mode. */
+  thinkMode: z.enum(["fast", "balanced", "deep"]).optional(),
 });
 
 type Attachment = z.infer<typeof attachmentSchema>;
@@ -194,6 +197,7 @@ chatRouter.post(
       attachments,
       webSearchEnabled,
       excludeFromMemory,
+      thinkMode,
     } = parsed.data;
 
     if (!message.trim() && attachments.length === 0) {
@@ -274,7 +278,12 @@ chatRouter.post(
       historyLength: 0,
     });
 
-    let chosenModel = routing.model;
+    // Think mode is a stronger signal than task routing: the user picked it for
+    // this message, so its model wins where it names one. Task routing still
+    // decides everything Balanced leaves open.
+    const think = resolveThinkMode(settings, thinkMode);
+
+    let chosenModel = think.model ?? routing.model;
 
     // "Process locally only" is a privacy promise, so it overrides the model
     // choice rather than being one input among several.
@@ -401,6 +410,10 @@ chatRouter.post(
       );
     }
 
+    // Fast asks for brevity, Deep asks for working. Balanced adds nothing,
+    // because the baseline prompt already describes the normal case.
+    if (think.instruction) notes.push(think.instruction);
+
     if (settings.privacy.localOnly) {
       notes.push(
         `\n\nThis account is set to process everything on this server. You have no web access and no external tools for this conversation.`
@@ -430,7 +443,12 @@ chatRouter.post(
       systemPrompt,
       model: vendorModel,
       webSearch: canSearch,
-      maxTokens: settings.advanced.maxOutputTokens,
+      // The think mode can only narrow the account's ceiling, never widen it
+      // past what the platform allows.
+      maxTokens: Math.min(
+        settings.advanced.maxOutputTokens,
+        think.maxTokens ?? settings.advanced.maxOutputTokens
+      ),
       // Only sent where the provider accepts one. Some vendors reject the
       // parameter on their current models, so sending it there would fail the
       // request rather than change the output.
@@ -473,6 +491,11 @@ chatRouter.post(
       task: routing.task,
       processedLocally: provider.id === "local",
       excludeFromMemory: memoryExcluded,
+      thinkMode: think.mode,
+      // False on deep means the mode is working at the prompt level rather
+      // than on a reasoning tier — the composer says so rather than letting
+      // the label imply otherwise.
+      nativeReasoning: think.nativeReasoning,
     };
 
     const wantsStream =

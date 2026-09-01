@@ -34,7 +34,15 @@ export class AnthropicProvider implements AIProvider {
   // never implies Aviel built the model.
   readonly displayName = "Anthropic";
 
-  readonly capabilities = { webSearch: true, images: true, temperature: false };
+  //  is about this integration, not the vendor: extended
+  // thinking is not wired up here, so Deep think falls back to a prompt
+  // instruction rather than a reasoning tier.
+  readonly capabilities = {
+    webSearch: true,
+    images: true,
+    reasoning: false,
+    temperature: false,
+  };
 
   readonly models = [
     {

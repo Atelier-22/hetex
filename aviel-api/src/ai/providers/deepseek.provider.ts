@@ -27,6 +27,9 @@ export class DeepSeekProvider implements AIProvider {
   readonly capabilities: ProviderCapabilities = {
     webSearch: false,
     images: false,
+    // deepseek-reasoner works through a problem before answering, so Deep
+    // think has a real tier to route to here.
+    reasoning: true,
     temperature: true,
   };
 

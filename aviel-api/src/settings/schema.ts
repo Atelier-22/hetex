@@ -55,6 +55,17 @@ export const aiSchema = z.object({
   reasoningModel: z.string().max(80).nullable().default(null),
   visionModel: z.string().max(80).nullable().default(null),
   codingModel: z.string().max(80).nullable().default(null),
+  /**
+   * How much effort a reply should take, as a standing default. The composer
+   * can override it per message.
+   *
+   * "fast" prefers the account's fast model and a shorter ceiling; "deep"
+   * prefers the reasoning model and asks for the problem to be worked through
+   * before the answer. Neither invents a capability: a model with no reasoning
+   * tier still gets the prompt-level instruction, and the composer says so
+   * rather than implying a mode the model does not have.
+   */
+  thinkMode: z.enum(["fast", "balanced", "deep"]).default("balanced"),
   /** Pick a model per message from the task rather than always using the default. */
   autoRouting: z.boolean().default(false),
   /** Answer from the on-device model when the hosted provider fails. */

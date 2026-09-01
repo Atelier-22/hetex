@@ -4,6 +4,7 @@ import { requireAuth, asyncHandler } from "../auth/middleware";
 import { NOTIFICATION_CATEGORIES } from "../services/notifications.service";
 import { availableModels, providerStatus } from "../ai";
 import { getLocalRuntimeStatus } from "../ai/local-runtime";
+import { describeThinkModes } from "../ai/think";
 import {
   SETTINGS_GROUPS,
   defaultSettings,
@@ -96,6 +97,10 @@ settingsRouter.get(
       notificationsDeliverable: false,
 
       memoryCategories: MEMORY_CATEGORIES,
+
+      // Computed for this account and this server, so the composer describes
+      // what each mode will actually do rather than a generic promise.
+      thinkModes: describeThinkModes(await loadSettings(req.userId!)),
 
       // Interface copy exists only in English. AI response language is a
       // different matter — that one genuinely works, because it is passed to

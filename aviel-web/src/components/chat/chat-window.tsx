@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
-import { ComposerMenu } from "./composer-menu";
+import { Composer, type ThinkMode } from "./composer";
 import { LiveVoicePanel } from "./live-voice-panel";
 import { AvielIcon } from "../logo";
 import { useSettingsStore } from "@/lib/settings/store";
@@ -97,6 +97,9 @@ export function ChatWindow({
   } | null>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
+  // Seeded from the account default, then overridable per message from the
+  // composer without changing the stored preference.
+  const [thinkMode, setThinkMode] = useState<ThinkMode>(settings.ai.thinkMode);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -246,7 +249,9 @@ export function ChatWindow({
     startListening();
   }
 
-  function handleFilesSelected(fileList: FileList) {
+  // Accepts a File[] as well as a FileList: a paste and a drop both hand over
+  // a plain array, and only a file input gives a FileList.
+  function handleFilesSelected(fileList: FileList | File[]) {
     const maxBytes = (meta?.limits?.maxUploadMb ?? 5) * 1_000_000;
 
     Array.from(fileList).forEach((file) => {
@@ -300,6 +305,9 @@ export function ChatWindow({
       })),
       webSearchEnabled: useWebSearch,
       excludeFromMemory,
+      // Per-message, so choosing Deep for one hard question does not change
+      // the account's standing preference.
+      thinkMode,
     };
 
     if (settingsRef.current.advanced.debugMode) {
@@ -746,14 +754,14 @@ export function ChatWindow({
               setPinnedToBottom(true);
               scrollRef.current?.scrollIntoView({ behavior: "smooth" });
             }}
-            className="focus-ring absolute -top-11 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-md hover:text-[var(--text-primary)]"
+            className="av-btn av-btn--default absolute -top-11 left-1/2 h-8 -translate-x-1/2 px-3 text-xs shadow-[var(--e-2)]"
           >
             <ArrowDown size={13} /> Jump to latest
           </button>
         )}
 
-        <div className="mx-auto max-w-3xl">
-          {liveVoiceOpen && (
+        {liveVoiceOpen && (
+          <div className="mx-auto w-full max-w-3xl">
             <LiveVoicePanel
               conversationId={conversationId}
               onClose={() => setLiveVoiceOpen(false)}
@@ -769,158 +777,31 @@ export function ChatWindow({
                 ])
               }
             />
-          )}
-
-          {(pendingFiles.length > 0 ||
-            webSearchEnabled ||
-            selectedProject ||
-            (interim && voice.showTranscript)) && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5">
-              {selectedProject && (
-                <span className="bg-accent-soft flex items-center gap-1 rounded-full px-2.5 py-1 text-xs">
-                  in {selectedProject.name}
-                </span>
-              )}
-              {webSearchEnabled && (
-                <span className="bg-accent-soft flex items-center gap-1 rounded-full px-2.5 py-1 text-xs">
-                  <Globe size={11} /> Web search on
-                </span>
-              )}
-              {interim && voice.showTranscript && (
-                <span className="flex items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-xs italic text-[var(--text-secondary)]">
-                  <Mic size={11} /> {interim}
-                </span>
-              )}
-              {pendingFiles.map((f) => (
-                <span
-                  key={f.name}
-                  className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] py-1 pl-1 pr-2 text-xs"
-                >
-                  {f.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={f.previewUrl}
-                      alt=""
-                      className="h-5 w-5 rounded-full object-cover"
-                    />
-                  ) : (
-                    <FileText size={13} className="text-[var(--text-secondary)]" />
-                  )}
-                  <span className="max-w-[120px] truncate">{f.name}</span>
-                  <button
-                    onClick={() => removeFile(f.name)}
-                    aria-label={`Remove ${f.name}`}
-                    className="focus-ring rounded"
-                  >
-                    <X size={12} className="text-[var(--text-secondary)]" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-end gap-2">
-            <ComposerMenu
-              onFilesSelected={handleFilesSelected}
-              webSearchEnabled={webSearchEnabled}
-              onToggleWebSearch={() => setWebSearchEnabled((v) => !v)}
-              selectedProject={selectedProject}
-              onSelectProject={setSelectedProject}
-              showProjectPicker={!conversationId}
-            />
-
-            {settings.liveVoice.enabled && micSupported && (
-              <button
-                onClick={() => setLiveVoiceOpen((v) => !v)}
-                aria-pressed={liveVoiceOpen}
-                aria-label="Live voice"
-                title="Live voice — talk and listen hands-free"
-                className={`focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-11 sm:w-11 ${
-                  liveVoiceOpen
-                    ? "border-accent text-accent"
-                    : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
-                }`}
-              >
-                <Radio size={16} />
-              </button>
-            )}
-
-            {showMic && (
-              <button
-                onClick={voice.micMode === "hold" ? undefined : toggleListening}
-                onPointerDown={
-                  voice.micMode === "hold" ? startListening : undefined
-                }
-                onPointerUp={voice.micMode === "hold" ? stopListening : undefined}
-                onPointerLeave={
-                  voice.micMode === "hold" && isListening ? stopListening : undefined
-                }
-                className={`focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors sm:h-11 sm:w-11 ${
-                  isListening
-                    ? "animate-pulse border-aviel-red-500 text-aviel-red-500"
-                    : "border-[var(--border-subtle)] text-[var(--text-secondary)]"
-                }`}
-                aria-label={isListening ? "Stop listening" : "Speak your message"}
-                aria-pressed={isListening}
-                title={
-                  voice.micMode === "hold"
-                    ? "Hold to talk"
-                    : voice.micMode === "continuous"
-                      ? "Continuous listening"
-                      : isListening
-                        ? "Listening — click to stop"
-                        : "Speak your message"
-                }
-              >
-                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-              </button>
-            )}
-
-            <textarea
-              ref={textareaRef}
-              value={input}
-              aria-label="Message Aviel AI"
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                const wantsSend = sendOnEnter
-                  ? !e.shiftKey && !e.ctrlKey && !e.metaKey
-                  : e.ctrlKey || e.metaKey;
-                if (wantsSend) {
-                  e.preventDefault();
-                  void sendMessage();
-                }
-              }}
-              placeholder={
-                sendOnEnter ? "Message Aviel AI…" : "Message Aviel AI… (Ctrl+Enter to send)"
-              }
-              rows={1}
-              // 16px on mobile: iOS Safari zooms the whole page in when a
-              // focused input's text is smaller than that, and never zooms back
-              // out.
-              className="focus-ring max-h-[200px] min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3.5 py-2.5 text-base outline-none sm:px-4 sm:py-3 sm:text-sm"
-            />
-
-            {isStreaming ? (
-              <button
-                onClick={stopGeneration}
-                className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] sm:h-11 sm:w-11"
-                aria-label="Stop generating"
-              >
-                <Square size={16} />
-              </button>
-            ) : (
-              <button
-                onClick={() => void sendMessage()}
-                disabled={!input.trim() && pendingFiles.length === 0}
-                className="bg-accent-gradient focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40 sm:h-11 sm:w-11"
-                aria-label="Send message"
-              >
-                <Send size={16} />
-              </button>
-            )}
           </div>
-        </div>
+        )}
+
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSend={() => void sendMessage()}
+          onStop={stopGeneration}
+          isStreaming={isStreaming}
+          attachments={pendingFiles}
+          onAttach={handleFilesSelected}
+          onRemoveAttachment={removeFile}
+          webSearchEnabled={webSearchEnabled}
+          onToggleWebSearch={() => setWebSearchEnabled((v) => !v)}
+          selectedProject={selectedProject}
+          onSelectProject={setSelectedProject}
+          showProjectPicker={!conversationId}
+          voiceState={isListening ? "listening" : "idle"}
+          onToggleVoice={toggleListening}
+          interimTranscript={voice.showTranscript ? interim : ""}
+          onCancelVoice={stopListening}
+          micSupported={micSupported}
+          thinkMode={thinkMode}
+          onThinkModeChange={setThinkMode}
+        />
       </div>
     </div>
   );

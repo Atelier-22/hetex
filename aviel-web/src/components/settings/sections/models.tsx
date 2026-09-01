@@ -195,6 +195,36 @@ export function ModelsSection() {
         </SettingsBlock>
       </SettingsCard>
 
+      {/* ---- Think mode ---- */}
+      <SettingsCard
+        title="How much thought by default"
+        description="The composer's Think control starts here. Changing it there applies to that message only; changing it here changes where the composer starts."
+      >
+        <SettingsBlock>
+          <OptionCards
+            label="Default thinking mode"
+            value={values.thinkMode}
+            onChange={(v) => set({ thinkMode: v })}
+            options={(meta?.thinkModes ?? []).map((m) => ({
+              value: m.mode,
+              label: m.label,
+              // The note is computed server-side for this account, so Deep says
+              // plainly when no reasoning model is answering.
+              description: m.note,
+              badge:
+                m.mode === "deep" && !m.nativeReasoning ? (
+                  <StatusPill tone="warn">Prompt-level</StatusPill>
+                ) : undefined,
+            }))}
+          />
+          {!meta && (
+            <p className="text-xs text-[var(--text-secondary)]">
+              Loading what each mode does on this server…
+            </p>
+          )}
+        </SettingsBlock>
+      </SettingsCard>
+
       {/* ---- Routing ---- */}
       <SettingsCard
         title="Automatic model selection"

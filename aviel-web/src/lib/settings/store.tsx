@@ -76,6 +76,13 @@ export interface SettingsMeta {
   notificationChannels: { value: string; label: string }[];
   notificationsDeliverable: boolean;
   memoryCategories: string[];
+  /** Computed per account: what each mode will actually do here. */
+  thinkModes: {
+    mode: "fast" | "balanced" | "deep";
+    label: string;
+    note: string;
+    nativeReasoning: boolean;
+  }[];
   interfaceLanguages: { value: string; label: string }[];
   interfaceTranslationsAvailable: boolean;
   aiLanguages: { value: string; label: string }[];

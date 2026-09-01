@@ -24,6 +24,10 @@
   --pill-warn-bg: rgba(184, 115, 4, 0.12);
   --pill-warn-fg: #8a5603;
 
+  /* Destructive intent, kept separate from the accent so it stays readable
+     whichever accent the account has chosen. */
+  --danger: #d92d20;
+
   /* Green is the Aviel identity and the default. The accent set below is what
      every branded surface reads from, so a preference change moves all of them
      together instead of leaving half the UI on the old colour. */
@@ -52,6 +56,8 @@
   --pill-ok-fg: #6fe0a6;
   --pill-warn-bg: rgba(245, 187, 30, 0.14);
   --pill-warn-fg: #f5cd6a;
+
+  --danger: #f87171;
 
   --accent-from: #37cf80;
   --accent-to: #589fff;
@@ -534,3 +540,302 @@ html[data-bubble="minimal"] .chat-bubble--user {
 .prose-aviel code {
   font-size: var(--code-size, 0.875em);
 }
+
+/* ==========================================================================
+   Aviel design system
+   ==========================================================================
+
+   One vocabulary for the whole product. Before this, each screen invented its
+   own button padding, its own menu shadow and its own card border, which is
+   why the app read as several products stitched together.
+
+   Everything here is a composable class rather than a component, so a screen
+   can use `av-btn av-btn--primary` without importing anything, and a change to
+   the button shape happens once. */
+
+:root {
+  /* --- Radius ---------------------------------------------------------- */
+  --r-sm: 0.5rem;
+  --r-md: 0.75rem;
+  --r-lg: 1rem;
+  --r-xl: 1.25rem;
+  --r-pill: 999px;
+
+  /* --- Elevation -------------------------------------------------------
+     Three steps only. A fourth always turns out to be one of these three
+     with a different blur, and then nothing matches. */
+  --e-1: 0 1px 2px rgba(11, 21, 18, 0.05);
+  --e-2: 0 2px 8px -2px rgba(11, 21, 18, 0.1), 0 1px 2px rgba(11, 21, 18, 0.06);
+  --e-3: 0 12px 32px -12px rgba(11, 21, 18, 0.22), 0 2px 8px -4px rgba(11, 21, 18, 0.12);
+
+  /* --- Motion ----------------------------------------------------------
+     Two durations. Anything slower than 240ms reads as lag, not polish. */
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.dark {
+  --e-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --e-2: 0 2px 8px -2px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --e-3: 0 12px 32px -12px rgba(0, 0, 0, 0.75), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Buttons -------------------------------------------------------------
+   One shape, four intents. Height is set on the element rather than through
+   padding so a button with an icon and a button with text line up. */
+
+.av-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 2.25rem;
+  padding: 0 0.85rem;
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.av-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* A press should register physically. 1px is enough to feel and too little
+   to notice as movement. */
+.av-btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.av-btn--primary {
+  background-image: linear-gradient(to bottom right, var(--accent-from), var(--accent-to));
+  color: #fff;
+}
+.av-btn--primary:not(:disabled):hover { opacity: 0.92; }
+
+.av-btn--default {
+  border-color: var(--border-subtle);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.av-btn--default:not(:disabled):hover { background-color: var(--surface-hover); }
+
+.av-btn--ghost { color: var(--text-secondary); }
+.av-btn--ghost:not(:disabled):hover {
+  background-color: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.av-btn--danger {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+.av-btn--danger:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+/* Square icon-only button, same height as the text button beside it. */
+.av-btn--icon {
+  width: 2.25rem;
+  padding: 0;
+  border-radius: var(--r-sm);
+}
+
+.av-btn--round {
+  width: 2.25rem;
+  padding: 0;
+  border-radius: var(--r-pill);
+}
+
+/* --- Inputs ------------------------------------------------------------- */
+
+.av-input {
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.av-input::placeholder { color: var(--text-secondary); }
+.av-input:focus { outline: none; border-color: var(--accent-solid); }
+.av-input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* --- Surfaces ----------------------------------------------------------- */
+
+.av-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background-color: var(--surface-raised);
+}
+
+/* --- Menus ---------------------------------------------------------------
+   Used by the composer menu, the message overflow menu and the sidebar
+   conversation menu, which previously had three different treatments. */
+
+.av-menu {
+  min-width: 13rem;
+  padding: 0.3rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--surface-raised);
+  box-shadow: var(--e-3);
+  animation: av-menu-in var(--t-base) var(--ease);
+  transform-origin: var(--menu-origin, bottom left);
+}
+
+@keyframes av-menu-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.av-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+
+.av-menu-item:hover:not(:disabled) { background-color: var(--surface-hover); }
+.av-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.av-menu-item svg { flex: none; color: var(--text-secondary); }
+
+.av-menu-label {
+  padding: 0.45rem 0.6rem 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.av-menu-sep {
+  height: 1px;
+  margin: 0.3rem 0;
+  background-color: var(--border-subtle);
+}
+
+/* --- Composer ------------------------------------------------------------
+   The floating input. One rounded surface holding every control, rather than
+   a row of separate circular buttons that never quite aligned. */
+
+.av-composer {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-xl);
+  background-color: var(--surface-raised);
+  box-shadow: var(--e-2);
+  transition:
+    border-color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease);
+}
+
+.av-composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent-solid) 55%, var(--border-subtle));
+  box-shadow: var(--e-3);
+}
+
+/* Drag-and-drop target state. */
+.av-composer[data-dropping="true"] {
+  border-color: var(--accent-solid);
+  background-color: var(--accent-soft);
+}
+
+.av-composer textarea {
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text-primary);
+  /* 16px on mobile: iOS Safari zooms the page when a focused input's text is
+     smaller than that, and never zooms back out. */
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+@media (min-width: 640px) {
+  .av-composer textarea { font-size: 0.9375rem; }
+}
+
+.av-composer textarea::placeholder { color: var(--text-secondary); }
+
+/* --- Listening state -----------------------------------------------------
+   Three bars at different phases. Cheaper than a canvas and it reads as
+   "hearing you" rather than "loading". */
+
+.av-bars { display: inline-flex; align-items: center; gap: 2px; height: 0.85rem; }
+
+.av-bars span {
+  display: block;
+  width: 2px;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background-color: currentColor;
+  animation: av-bar 1s var(--ease) infinite;
+}
+
+.av-bars span:nth-child(2) { animation-delay: 0.15s; }
+.av-bars span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes av-bar {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+
+/* --- Thinking state ------------------------------------------------------
+   A travelling sheen rather than a spinner. A spinner says "waiting"; this
+   says "working", which is the honest description of a streaming reply. */
+
+.av-thinking {
+  background-image: linear-gradient(
+    90deg,
+    var(--text-secondary) 0%,
+    var(--accent-solid) 50%,
+    var(--text-secondary) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: av-sheen 1.8s linear infinite;
+}
+
+@keyframes av-sheen {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* --- Message entrance ----------------------------------------------------
+   Applied to a user message only. An assistant message is already animated by
+   the tokens arriving, and doubling that reads as jitter. */
+
+.av-enter { animation: av-enter var(--t-base) var(--ease); }
+
+@keyframes av-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Every animation above is decorative. The reduce-motion rules elsewhere in
+   this file already neutralise them, and data-animations="off" does too. */

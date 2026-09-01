@@ -45,6 +45,8 @@ export interface UserSettings {
     reasoningModel: string | null;
     visionModel: string | null;
     codingModel: string | null;
+    /** Standing default for the composer's Think control. */
+    thinkMode: "fast" | "balanced" | "deep";
     autoRouting: boolean;
     fallbackToLocal: boolean;
     webSearch: boolean;
@@ -316,6 +318,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
     reasoningModel: null,
     visionModel: null,
     codingModel: null,
+    thinkMode: "balanced",
     autoRouting: false,
     fallbackToLocal: true,
     webSearch: true,

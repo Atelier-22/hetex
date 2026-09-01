@@ -58,6 +58,12 @@ export interface ProviderCapabilities {
   webSearch: boolean;
   images: boolean;
   /**
+   * Whether this provider has a model that reasons before answering, as a
+   * distinct tier rather than a prompt instruction. Deep think routes to one
+   * where it exists, and says plainly that it is not where it does not.
+   */
+  reasoning: boolean;
+  /**
    * Whether a sampling temperature may be sent. False is not a limitation of
    * this codebase — some vendors reject the parameter outright on their newer
    * models, and sending it would fail the request.

@@ -34,6 +34,8 @@ export class LocalProvider implements AIProvider {
     // No local runtime here exposes a server-side search tool.
     webSearch: false,
     images: false,
+    // No local runtime here exposes a reasoning tier either.
+    reasoning: false,
     temperature: true,
   };
 

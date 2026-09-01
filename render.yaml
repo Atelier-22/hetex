@@ -1,17 +1,55 @@
-# Render blueprint — provisions the Hetex API service and its Postgres database.
+# Render blueprint — provisions the Aviel API service and its Postgres database.
 #
 # To use: Render Dashboard -> New -> Blueprint -> pick this repo. Render reads
 # this file, creates both resources, and wires DATABASE_URL between them.
 # ANTHROPIC_API_KEY is marked sync:false, so Render prompts you for it rather
 # than expecting it to live in the repo.
+#
+# ---------------------------------------------------------------------------
+# READ THIS BEFORE RE-APPLYING THIS BLUEPRINT TO AN EXISTING DEPLOYMENT
+# ---------------------------------------------------------------------------
+#
+# Every name below was changed from "hetex" to "aviel". Render matches existing
+# resources by name, so applying this file to a deployment created under the old
+# names does not rename anything — it provisions NEW resources beside the old
+# ones, and the new API points at a NEW EMPTY DATABASE. Existing accounts,
+# conversations and settings would still exist, but the running service would no
+# longer be able to see them.
+#
+# What can and cannot be renamed on a live Render deployment:
+#
+#   service name (aviel-api)   CAN be renamed, in the service's own Settings.
+#                              Do that first so this file matches it.
+#   disk name (aviel-models)   CAN be renamed in the service's Disks settings.
+#   database name (aviel-db)   CAN be renamed — it is only Render's label.
+#   databaseName / user        CANNOT. Both are fixed inside Postgres when the
+#                              instance is created. Renaming them here has no
+#                              effect on a live database, and re-applying the
+#                              blueprint is what triggers the empty-database
+#                              outcome described above.
+#
+# If the internal database name and role genuinely have to become "aviel",
+# that is a data migration, not a config change:
+#
+#   pg_dump  "$OLD_DATABASE_URL" -Fc -f aviel.dump
+#   # create the new database and role on the new instance, then:
+#   pg_restore -d "$NEW_DATABASE_URL" --no-owner --role=aviel aviel.dump
+#
+# Verify row counts on both sides before pointing the service at the new URL,
+# and keep the old instance until you have.
+#
+# The safe path, if none of that is wanted: rename the service, the disk and the
+# database label in the dashboard to match this file, and leave databaseName and
+# user as they are. They appear only inside the connection string and are never
+# shown to a user.
 
 services:
   - type: web
-    name: hetex-api
+    name: aviel-api
     runtime: node
     plan: free
     region: oregon
-    rootDir: hetex-api
+    rootDir: aviel-api
     # --include=dev is required: NODE_ENV=production makes npm skip
     # devDependencies, which is where TypeScript lives. Without it the build has
     # no compiler and falls back to whatever tsc it can find.
@@ -27,7 +65,7 @@ services:
     # disk instead. Note that disks require a paid instance type — on the free
     # plan this block has to go, and the model is re-downloaded each deploy.
     disk:
-      name: hetex-models
+      name: aviel-models
       mountPath: /models
       sizeGB: 5
     envVars:
@@ -35,7 +73,7 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: hetex-db
+          name: aviel-db
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
@@ -47,15 +85,15 @@ services:
         value: /models
       # Set these two in the Render dashboard after the first deploy:
       #   ANTHROPIC_API_KEY — your key from console.anthropic.com
-      #   CORS_ORIGINS      — your Vercel URL, e.g. https://hetex.vercel.app
+      #   CORS_ORIGINS      — your Vercel URL, e.g. https://aviel.vercel.app
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: CORS_ORIGINS
         sync: false
 
 databases:
-  - name: hetex-db
+  - name: aviel-db
     plan: free
     region: oregon
-    databaseName: hetex
-    user: hetex
+    databaseName: aviel
+    user: aviel

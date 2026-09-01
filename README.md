@@ -1,8 +1,8 @@
-# Hetex
+# Aviel
 
 Built in Uganda. Designed for the world.
 
-Hetex AI is a general-purpose AI platform — chat with Claude, organised into
+Aviel AI is a general-purpose AI platform — chat with Claude, organised into
 projects, with conversation history, per-user preferences, and a memory the
 assistant can draw on. It runs on the web and on phones, off one backend.
 
@@ -10,13 +10,13 @@ assistant can draw on. It runs on the web and on phones, off one backend.
 
 | Folder | What it is | Runs on |
 | --- | --- | --- |
-| [`hetex-api/`](hetex-api/) | Express + PostgreSQL API. Owns the database, auth, and every call to Claude | Render |
-| [`hetex-ai/`](hetex-ai/) | Next.js web frontend | Vercel |
-| [`hetex-mobile/`](hetex-mobile/) | React Native + Expo app | Expo / EAS |
+| [`aviel-api/`](aviel-api/) | Express + PostgreSQL API. Owns the database, auth, and every call to Claude | Render |
+| [`aviel-web/`](aviel-web/) | Next.js web frontend | Vercel |
+| [`aviel-mobile/`](aviel-mobile/) | React Native + Expo app | Expo / EAS |
 
 ```
   Browser  ──┐
-             ├──►  hetex-api (Render)  ──►  PostgreSQL
+             ├──►  aviel-api (Render)  ──►  PostgreSQL
   Phone    ──┘            │
                           └──────────────►  Claude (Anthropic)
 ```
@@ -29,21 +29,21 @@ API key never leaves the backend — neither client holds a secret.
 
 ```bash
 # Backend — start this first, the clients need it
-cd hetex-api
+cd aviel-api
 npm install
 cp .env.example .env      # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
 npm run dev               # http://localhost:4000
 
 # Web frontend
-cd hetex-ai
+cd aviel-web
 npm install
 cp .env.example .env.local  # set NEXTAUTH_SECRET
 npm run dev                 # http://localhost:3000
 ```
 
 Each project has its own README with the detail:
-[hetex-api](hetex-api/README.md) · [hetex-ai](hetex-ai/README.md) ·
-[hetex-mobile](hetex-mobile/README.md)
+[aviel-api](aviel-api/README.md) · [aviel-web](aviel-web/README.md) ·
+[aviel-mobile](aviel-mobile/README.md)
 
 ## Deployment
 

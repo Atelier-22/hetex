@@ -12,12 +12,12 @@
 # --- Dependencies ---
 node_modules/
 
-# --- Next.js (hetex-ai) ---
+# --- Next.js (aviel-web) ---
 .next/
 out/
 next-env.d.ts
 
-# --- Expo / React Native (hetex-mobile) ---
+# --- Expo / React Native (aviel-mobile) ---
 .expo/
 dist/
 web-build/
@@ -25,8 +25,8 @@ expo-env.d.ts
 .metro-health-check*
 .kotlin/
 *.orig.*
-/hetex-mobile/ios/
-/hetex-mobile/android/
+/aviel-mobile/ios/
+/aviel-mobile/android/
 
 # --- Local database & uploads ---
 *.db
@@ -58,4 +58,9 @@ yarn-error.*
 Thumbs.db
 
 .vercel
+
+# Re-stated here rather than relying on the rules at the top of this file: a
+# bare `.env*` at the end silently overrode the `!.env.example` negation above,
+# so a moved or newly added .env.example was ignored without anything saying so.
 .env*
+!.env.example

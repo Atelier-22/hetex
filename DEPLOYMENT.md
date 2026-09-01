@@ -4,9 +4,9 @@ Three pieces, three places:
 
 | Piece | Goes to | What it is |
 | --- | --- | --- |
-| [`hetex-api/`](hetex-api/) | **Render** — web service + Postgres | Express API. Owns the database, auth, and every call to Claude |
-| [`hetex-ai/`](hetex-ai/) | **Vercel** | Next.js frontend. No database, no API keys — it calls the Render API |
-| [`hetex-mobile/`](hetex-mobile/) | Expo / EAS | React Native app. Calls the same Render API |
+| [`aviel-api/`](aviel-api/) | **Render** — web service + Postgres | Express API. Owns the database, auth, and every call to Claude |
+| [`aviel-web/`](aviel-web/) | **Vercel** | Next.js frontend. No database, no API keys — it calls the Render API |
+| [`aviel-mobile/`](aviel-mobile/) | Expo / EAS | React Native app. Calls the same Render API |
 
 The frontend holds no secrets and talks to nothing but the API. The API is the
 only thing that touches Postgres or the Anthropic key.
@@ -27,8 +27,8 @@ The repo has a [`render.yaml`](render.yaml) blueprint, so Render can create
 both resources itself.
 
 1. [render.com](https://render.com) → **New** → **Blueprint**
-2. Connect the `hetex` repo. Render reads `render.yaml` and shows a web service
-   (`hetex-api`) plus a Postgres database (`hetex-db`)
+2. Connect the `aviel` repo. Render reads `render.yaml` and shows a web service
+   (`aviel-api`) plus a Postgres database (`aviel-db`)
 3. It will prompt for the two values marked `sync: false`:
 
    | Variable | Value |
@@ -42,7 +42,7 @@ both resources itself.
 4. Click apply. First build takes a few minutes.
 
 **No manual database setup is needed.** The service applies its own migrations
-at boot from [`hetex-api/drizzle/`](hetex-api/drizzle/) — a fresh database
+at boot from [`aviel-api/drizzle/`](aviel-api/drizzle/) — a fresh database
 provisions itself on first start. If migrations fail the process exits rather
 than serving requests against a half-built schema, so a red deploy means read
 the logs, don't retry blindly.
@@ -50,7 +50,7 @@ the logs, don't retry blindly.
 When it goes green, check it:
 
 ```bash
-curl https://hetex-api.onrender.com/health
+curl https://aviel-api.onrender.com/health
 # {"status":"ok","aiProvider":"configured"}
 ```
 
@@ -64,7 +64,7 @@ the service up manually instead (**New → Web Service**):
 
 | Field | Value |
 | --- | --- |
-| Root Directory | `hetex-api` |
+| Root Directory | `aviel-api` |
 | Region | same as the database |
 | Build Command | `npm ci --include=dev && npm run build` |
 | Start Command | `npm start` |
@@ -86,12 +86,12 @@ Two failure modes, both with unhelpful error messages:
 > free Postgres is deleted after 30 days. Both are fine for testing; neither is
 > fine for real users.
 
-Copy the service URL — something like `https://hetex-api.onrender.com`.
+Copy the service URL — something like `https://aviel-api.onrender.com`.
 
 ## 2. Vercel — frontend
 
-1. [vercel.com](https://vercel.com) → **Add New** → **Project** → import `hetex`
-2. **Root Directory: `hetex-ai`** — this is the one setting that matters. It's a
+1. [vercel.com](https://vercel.com) → **Add New** → **Project** → import `aviel`
+2. **Root Directory: `aviel-web`** — this is the one setting that matters. It's a
    monorepo; Vercel has to be told which folder holds the Next.js app
 3. Environment variables:
 
@@ -99,7 +99,7 @@ Copy the service URL — something like `https://hetex-api.onrender.com`.
    | --- | --- |
    | `NEXT_PUBLIC_API_URL` | your Render URL, no trailing slash |
    | `NEXTAUTH_SECRET` | generate: `openssl rand -base64 32` |
-   | `NEXTAUTH_URL` | your Vercel URL, e.g. `https://hetex.vercel.app` |
+   | `NEXTAUTH_URL` | your Vercel URL, e.g. `https://aviel.vercel.app` |
 
    `NEXT_PUBLIC_API_URL` is compiled into the browser bundle, so it must be set
    **before** the build. Changing it later requires a redeploy, not just a
@@ -113,11 +113,11 @@ Copy the service URL — something like `https://hetex-api.onrender.com`.
 
 ## 3. Close the loop
 
-Back in Render → `hetex-api` → **Environment**, set `CORS_ORIGINS` to your real
+Back in Render → `aviel-api` → **Environment**, set `CORS_ORIGINS` to your real
 Vercel URL:
 
 ```
-CORS_ORIGINS=https://hetex.vercel.app
+CORS_ORIGINS=https://aviel.vercel.app
 ```
 
 Save; Render restarts the service. Preview deployments on `*.vercel.app` are
@@ -131,15 +131,15 @@ the whole chain: browser → Vercel → Render → Postgres → Claude and back.
 Point the app at the same API and build:
 
 ```bash
-cd hetex-mobile
-EXPO_PUBLIC_API_URL=https://hetex-api.onrender.com npx expo start
+cd aviel-mobile
+EXPO_PUBLIC_API_URL=https://aviel-api.onrender.com npx expo start
 ```
 
 For a real installable build, set `EXPO_PUBLIC_API_URL` in your EAS build
 profile and run `npx eas build --platform android --profile preview`.
 
 Testing against the deployed backend removes the same-Wi-Fi requirement in
-[hetex-mobile/README.md](hetex-mobile/README.md) — that only applies when the
+[aviel-mobile/README.md](aviel-mobile/README.md) — that only applies when the
 API runs on your laptop.
 
 ---
@@ -150,16 +150,16 @@ Three terminals, or two if you skip mobile.
 
 ```bash
 # 1. Postgres — create the database once
-createdb hetex
+createdb aviel
 
 # 2. Backend
-cd hetex-api
+cd aviel-api
 npm install
 cp .env.example .env       # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
 npm run dev                # http://localhost:4000, migrates on boot
 
 # 3. Frontend
-cd hetex-ai
+cd aviel-web
 npm install
 cp .env.example .env.local # set NEXTAUTH_SECRET
 npm run dev                # http://localhost:3000
@@ -173,7 +173,7 @@ than a style preference.
 
 ## Environment variables in one place
 
-**hetex-api (Render)**
+**aviel-api (Render)**
 
 | Variable | Required | Notes |
 | --- | --- | --- |
@@ -185,7 +185,7 @@ than a style preference.
 | `JWT_EXPIRES_IN` | no | Defaults to `30d` |
 | `PORT` | no | Render sets this |
 
-**hetex-ai (Vercel)**
+**aviel-web (Vercel)**
 
 | Variable | Required | Notes |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ than a style preference.
 | `NEXTAUTH_SECRET` | yes | Encrypts the session cookie |
 | `NEXTAUTH_URL` | yes | Must match the deployed URL exactly |
 
-**hetex-mobile (Expo/EAS)**
+**aviel-mobile (Expo/EAS)**
 
 | Variable | Required | Notes |
 | --- | --- | --- |

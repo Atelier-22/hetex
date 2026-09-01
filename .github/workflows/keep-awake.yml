@@ -29,7 +29,7 @@ jobs:
           # --max-time allows for a cold start rather than failing the run when
           # the ping is the request that happens to wake it.
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 \
-            https://hetex.onrender.com/health)
+            https://aviel.onrender.com/health)
           echo "health -> $code"
           # A 5xx is worth failing on; anything else means the service answered.
           if [ "$code" -ge 500 ] || [ "$code" -eq 000 ]; then

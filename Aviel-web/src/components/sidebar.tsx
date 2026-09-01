@@ -22,7 +22,7 @@ import {
   ChevronRight,
   User,
 } from "lucide-react";
-import { AvielIcon, AvielLockup } from "./logo";
+import { AvielIcon, AvielLockupInline } from "./logo";
 import { apiFetch } from "@/lib/api-client";
 import { useSettingsUi } from "./settings/settings-context";
 import { useSettingsGroup } from "@/lib/settings/store";
@@ -344,7 +344,7 @@ export function Sidebar() {
           // The lockup already contains the wordmark, so the adjacent "Aviel AI"
           // text it replaces would have been a duplicate.
           <Link href="/chat" aria-label="Aviel AI — new chat">
-            <AvielLockup height={28} priority />
+            <AvielLockupInline height={26} />
           </Link>
         )}
         {collapsed && (

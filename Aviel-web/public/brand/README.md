@@ -1,39 +1,39 @@
 # Brand assets
 
-The app references these by exact filename. Names must match.
+The Aviel wordmark is **drawn as type, not loaded as an image** — see
+`src/components/logo.tsx`. It sets "Aviel" in Cormorant Garamond over the
+`Think · Decide · Grow` strapline, follows the light and dark themes, and stays
+crisp at any size. There is nothing to export and nothing to keep in sync.
 
-| File | Used by | Notes |
+The five PNG logo and lockup files that used to live here have been removed.
+They were the previous brand's artwork, nothing referenced them once the
+wordmark became type, and leaving them would have meant the old identity
+resurfacing the next time someone reached for a logo file.
+
+## What is still an image, and still wrong
+
+These four are the **previous brand's artwork**. They cannot be generated from
+type, because the browser and the operating system need real image files:
+
+| File | Used by | Size |
 | --- | --- | --- |
-| `Aviel-logo-color.png` | Empty-chat screen (80px), collapsed sidebar (28px) | Icon only, square, transparent. 512×512 or larger |
-| `Aviel-lockup-light.png` | Sidebar header and auth pages **in light theme** | Icon + wordmark, **dark text**, transparent |
-| `Aviel-lockup-dark.png` | Sidebar header and auth pages **in dark theme** | Icon + wordmark, **white text**, transparent |
-| `favicon.ico` | Browser tab | Multi-size ico (16/32/48) |
-| `apple-touch-icon.png` | iOS home screen | 180×180, no transparency — iOS composites it on black |
+| `favicon.ico` | Browser tab | multi-size ico (16/32/48) |
+| `apple-touch-icon.png` | iOS home screen | 180×180, no transparency — iOS composites on black |
 | `icon-192.png` | Web app manifest | 192×192 |
-| `icon-512.png` | Web app manifest, install prompts | 512×512 |
+| `icon-512.png` | Web app manifest, install prompt | 512×512 |
 
-## Why two lockups
+Until they are replaced, a browser tab and an installed icon still show the old
+mark. Replacing them is a design task, not a code one: drop in files with these
+exact names and sizes and nothing else needs to change.
 
-The wordmark colour is baked into the artwork, so one file cannot serve both
-themes. [`logo.tsx`](../../src/components/logo.tsx) picks between them from the
-resolved theme, which also covers "system".
+`favicon.ico` and `apple-touch-icon.png` are **also served from the site root**,
+because browsers request `/favicon.ico` unconditionally and iOS requests
+`/apple-touch-icon.png`, both ignoring the tags in `layout.tsx` entirely. The
+copies in `public/` and `public/brand/` must match.
 
-## Sizing
+## The mark
 
-The lockup renders height-driven with `width: auto`, so its own aspect ratio
-decides the width and it can never be stretched. Supplying a `width` treats it
-as a maximum for the same reason. Export the two lockups at the **same aspect
-ratio** or the header will shift height when the theme changes.
-
-## If a file is missing
-
-Nothing renders broken: the lockup falls back to the text "Aviel AI" and the
-icon to a screen-reader-only label. The favicon will 404 in the tab until
-`favicon.ico` exists.
-
-## Icons are declared in metadata, not by file convention
-
-Next.js would otherwise pick up `src/app/favicon.ico`, `src/app/icon.png`, and
-`src/app/apple-icon.png` automatically, and those take precedence over
-`metadata.icons`. Those files were removed so everything lives here — don't
-re-add them, or they will silently override this folder.
+Where a square icon is needed — a collapsed sidebar, an avatar slot —
+`AvielIcon` draws a serif "A" on the accent gradient. It is the one place the
+accent is allowed to carry the brand, because there is no wordmark beside it to
+do that job.

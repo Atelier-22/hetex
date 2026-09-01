@@ -20,8 +20,9 @@ import {
 } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { Composer, type ThinkMode } from "./composer";
+import { composerPlaceholder } from "./composer-placeholder";
 import { LiveVoicePanel } from "./live-voice-panel";
-import { AvielIcon } from "../logo";
+import { AvielLockup } from "../logo";
 import { useSettingsStore } from "@/lib/settings/store";
 import { apiFetch, apiStream } from "@/lib/api-client";
 import {
@@ -653,12 +654,15 @@ export function ChatWindow({
       >
         <div className="chat-stack mx-auto flex max-w-3xl flex-col">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3 pt-20 text-center text-[var(--text-secondary)]">
-              <AvielIcon size={80} priority />
-              <p className="text-lg font-medium text-[var(--text-primary)]">
-                What can I help you with?
+            <div className="flex flex-col items-center justify-center pt-16 text-center text-[var(--text-secondary)] sm:pt-24">
+              <AvielLockup height={52} align="center" priority />
+              {/* The lockup already carries the strapline, so the greeting
+                  below it is the only other line — two headings stacked read
+                  as a splash screen rather than a starting point. */}
+              <p className="mt-7 text-lg font-medium text-[var(--text-primary)]">
+                {composerPlaceholder(settings).replace(/…$/, "")}
               </p>
-              <div className="mt-3 grid w-full max-w-lg gap-2 sm:grid-cols-2">
+              <div className="mt-6 grid w-full max-w-lg gap-2 sm:grid-cols-2">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}

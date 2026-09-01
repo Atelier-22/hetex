@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
-import { AvielLockup } from "../logo";
+import { AvielLockupInline } from "../logo";
 
 /**
  * Marketing nav.
@@ -41,7 +41,7 @@ export function MarketingNav() {
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
         <Link href="/" aria-label="Aviel AI — home">
-          <AvielLockup height={26} priority />
+          <AvielLockupInline height={26} />
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">

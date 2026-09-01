@@ -1,10 +1,24 @@
 import type { Metadata, Viewport } from "next";
+import { Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
+// The wordmark face, and nothing else. Scoped to a CSS variable rather than
+// applied to body so it cannot leak into interface copy, which stays on the
+// system sans stack for legibility at small sizes.
+const serif = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  display: "swap",
+  variable: "--font-serif",
+  // A real fallback, so the wordmark still reads as a wordmark if the font
+  // never arrives.
+  fallback: ["Georgia", "Times New Roman", "serif"],
+});
+
 export const metadata: Metadata = {
-  title: "Aviel AI",
-  description: "Aviel AI — Built in Uganda. Designed for the world.",
+  title: "Aviel",
+  description: "Aviel — Think · Decide · Grow. Built in Uganda. Designed for the world.",
   // Declared here rather than via the src/app/favicon.ico file convention,
   // which takes precedence over this block — the two cannot both be used.
   //
@@ -43,7 +57,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={serif.variable} suppressHydrationWarning>
       <body className="font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

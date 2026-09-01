@@ -1,175 +1,168 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
+// Aviel — the wordmark.
+//
+// Drawn as type rather than loaded as an image. A PNG lockup has to ship two
+// files for light and dark, goes soft on a high-density screen, and reflows the
+// layout while it loads. Set as text it is crisp at any size, follows the
+// theme, and costs nothing to render.
+//
+// The serif is loaded once in the root layout and exposed as --font-serif, so
+// the wordmark and the tagline are the only things using it and it never leaks
+// into interface copy.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "next-themes";
 
-const ICON_SRC = "/brand/Aviel-logo-color.png";
-const LOCKUP_LIGHT_SRC = "/brand/Aviel-lockup-light.png"; // dark text, for light backgrounds
-const LOCKUP_DARK_SRC = "/brand/Aviel-lockup-dark.png"; // white text, for dark backgrounds
+/** Letterspacing that keeps the tagline legible as it shrinks. */
+const TAGLINE = "Think · Decide · Grow";
 
 /**
- * Drawn stand-in used until the artwork is in place, and if it ever fails to
- * load afterwards.
+ * The mark on its own — an "A" in the brand serif, inside a soft square.
  *
- * It is deliberately visible. An invisible fallback makes a missing file look
- * like a broken layout, which is harder to diagnose than an obviously
- * placeholder mark.
- */
-function FallbackMark({ size, className = "" }: { size: number; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      width={size}
-      height={size}
-      role="img"
-      aria-label="Aviel AI"
-      className={`shrink-0 ${className}`}
-      style={{ width: size, height: size }}
-    >
-      <defs>
-        <linearGradient id="Aviel-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="var(--accent-from)" />
-          <stop offset="100%" stopColor="var(--accent-to)" />
-        </linearGradient>
-      </defs>
-      <circle
-        cx="32"
-        cy="32"
-        r="27"
-        fill="none"
-        stroke="url(#Aviel-mark)"
-        strokeWidth="5"
-      />
-      {/* Speed lines, echoing the motion in the real mark. */}
-      <g stroke="url(#Aviel-mark)" strokeWidth="3.5" strokeLinecap="round">
-        <line x1="14" y1="27" x2="30" y2="27" />
-        <line x1="18" y1="34" x2="34" y2="34" />
-        <line x1="22" y1="41" x2="32" y2="41" />
-      </g>
-      <text
-        x="40"
-        y="41"
-        textAnchor="middle"
-        fontSize="22"
-        fontWeight="700"
-        fill="url(#Aviel-mark)"
-        fontFamily="inherit"
-      >
-        H
-      </text>
-    </svg>
-  );
-}
-
-/**
- * The Aviel icon — horse-in-circle, no wordmark.
- *
- * The artwork carries its own green-blue gradient and is not recoloured by the
- * accent preference; a logo that changes colour stops reading as a logo. The
- * drawn fallback does follow the accent, because it is interface chrome rather
- * than the brand.
- *
- * Width and height are both set so the browser reserves the space before the
- * image loads, rather than reflowing the page around it.
+ * Used where there is no room for the full wordmark: a collapsed sidebar, an
+ * avatar slot, a favicon-sized corner.
  */
 export function AvielIcon({
   size = 32,
   className = "",
-  priority = false,
+  // Kept for call-site compatibility; nothing is fetched, so there is nothing
+  // to prioritise.
+  priority: _priority = false,
 }: {
   size?: number;
   className?: string;
   priority?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) return <FallbackMark size={size} className={className} />;
-
   return (
-    <img
-      src={ICON_SRC}
-      alt="Aviel AI"
-      width={size}
-      height={size}
-      onError={() => setFailed(true)}
-      loading={priority ? "eager" : "lazy"}
-      className={`shrink-0 object-contain ${className}`}
-      style={{ width: size, height: size }}
-    />
+    <span
+      role="img"
+      aria-label="Aviel"
+      className={`inline-flex shrink-0 select-none items-center justify-center rounded-[22%] ${className}`}
+      style={{
+        width: size,
+        height: size,
+        // The mark is the one place the accent gradient is allowed to carry
+        // the brand, because there is no wordmark to carry it instead.
+        backgroundImage:
+          "linear-gradient(to bottom right, var(--accent-from), var(--accent-to))",
+        color: "#fff",
+        fontFamily: "var(--font-serif)",
+        // Optically centred: a serif capital sits high in its em box, so the
+        // glyph needs nudging down to look centred rather than measured.
+        fontSize: size * 0.58,
+        lineHeight: 1,
+        paddingTop: size * 0.04,
+        fontWeight: 500,
+      }}
+    >
+      A
+    </span>
   );
 }
 
 /**
- * The full lockup — icon plus the AVIEL AI wordmark.
+ * The full wordmark: "Aviel" over the tagline.
  *
- * Two files exist because the wordmark colour is baked into the artwork: dark
- * text for light backgrounds, white for dark. Picking by resolved theme rather
- * than by CSS keeps the contrast right in both, including "system".
- *
- * Sizing is height-driven with `width: auto`, so the artwork's own aspect ratio
- * decides its width and it can never come out stretched. A supplied `width` is
- * treated as a maximum for the same reason.
+ * `height` drives the whole lockup so a call site can size it the way it sized
+ * the old image, and the tagline scales with it. Below about 22px the tagline
+ * stops being readable and is dropped rather than rendered as a grey smear.
  */
 export function AvielLockup({
   height = 28,
   width,
   className = "",
-  priority = false,
+  showTagline = true,
+  align = "left",
+  priority: _priority = false,
 }: {
   height?: number;
   width?: number;
   className?: string;
+  /** Off in tight places — a sidebar header does not need the strapline. */
+  showTagline?: boolean;
+  /** Centred for the brand moments, left-aligned inside a header row. */
+  align?: "left" | "center";
   priority?: boolean;
 }) {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  // resolvedTheme is only known on the client. Rendering a guess on the server
-  // and correcting it after hydration would flash the wrong wordmark.
-  useEffect(() => setMounted(true), []);
-
-  if (failed || (mounted && !LOCKUP_LIGHT_SRC)) {
-    return (
-      <span className={`flex items-center gap-2 ${className}`}>
-        <FallbackMark size={height} />
-        <span
-          className="font-bold tracking-tight"
-          style={{ fontSize: Math.round(height * 0.62) }}
-        >
-          AVIEL AI
-        </span>
-      </span>
-    );
-  }
-
-  // Before hydration, reserve the space without committing to a variant.
-  if (!mounted) {
-    return (
-      <span
-        className={`inline-block ${className}`}
-        style={width ? { width, height } : { height }}
-        aria-hidden
-      />
-    );
-  }
-
-  const src = resolvedTheme === "dark" ? LOCKUP_DARK_SRC : LOCKUP_LIGHT_SRC;
+  const wordSize = height;
+  const taglineSize = Math.max(7, Math.round(height * 0.26));
+  const withTagline = showTagline && height >= 22;
+  const centered = align === "center";
 
   return (
-    <img
-      src={src}
-      alt="Aviel AI"
-      onError={() => setFailed(true)}
-      loading={priority ? "eager" : "lazy"}
-      className={`object-contain ${className}`}
-      style={
-        width
-          ? { width: "100%", maxWidth: width, height: "auto" }
-          : { height, width: "auto" }
-      }
-    />
+    <span
+      className={`inline-flex select-none flex-col justify-center leading-none ${
+        centered ? "items-center text-center" : "items-start"
+      } ${className}`}
+      style={width ? { maxWidth: width } : undefined}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-serif)",
+          fontSize: wordSize,
+          fontWeight: 500,
+          letterSpacing: "0.01em",
+          lineHeight: 1,
+          color: "var(--text-primary)",
+        }}
+      >
+        Aviel
+      </span>
+
+      {withTagline && (
+        <span
+          aria-hidden
+          style={{
+            fontSize: taglineSize,
+            // Wide tracking is what makes a strapline read as one, and it has
+            // to grow with the type or it collapses at large sizes.
+            letterSpacing: "0.32em",
+            // Tracking adds space after the last letter too, which throws the
+            // block off-centre against the word above it.
+            marginRight: "-0.32em",
+            marginTop: height * 0.28,
+            textTransform: "uppercase",
+            color: "var(--text-secondary)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {TAGLINE}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Mark and wordmark side by side, for a horizontal header.
+ *
+ * Separate from `AvielLockup` because the stacked lockup is centred and this
+ * one is not — trying to make one component do both produced a lockup that was
+ * subtly wrong in whichever place it was not designed for.
+ */
+export function AvielLockupInline({
+  height = 28,
+  className = "",
+  showTagline = false,
+}: {
+  height?: number;
+  className?: string;
+  showTagline?: boolean;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  return (
+    <span
+      className={`inline-flex items-center gap-2.5 ${className}`}
+      // Space is reserved before hydration so the header does not jump.
+      style={{ minHeight: height }}
+      suppressHydrationWarning
+    >
+      <AvielIcon size={height} />
+      {mounted && (
+        <AvielLockup height={height * 0.82} showTagline={showTagline} />
+      )}
+    </span>
   );
 }

@@ -27,6 +27,7 @@ import {
   Mic,
   Paperclip,
   Plus,
+  Radio,
   Sparkles,
   Square,
   X,
@@ -77,6 +78,7 @@ export function Composer({
   micSupported,
   thinkMode,
   onThinkModeChange,
+  onOpenLiveVoice,
   autoFocus,
 }: {
   value: string;
@@ -99,6 +101,8 @@ export function Composer({
   micSupported: boolean;
   thinkMode: ThinkMode;
   onThinkModeChange: (m: ThinkMode) => void;
+  /** Omitted where live voice does not apply, such as the marketing page. */
+  onOpenLiveVoice?: () => void;
   autoFocus?: boolean;
 }) {
   const { settings, meta } = useSettingsStore();
@@ -469,6 +473,18 @@ export function Composer({
 
           {/* Bottom-right */}
           <div className="hx-rail hx-rail--right">
+            {onOpenLiveVoice && settings.liveVoice.enabled && micSupported && (
+              <button
+                type="button"
+                onClick={onOpenLiveVoice}
+                aria-label="Start a live voice conversation"
+                title="Live voice — talk and listen hands-free"
+                className="hx-icon-btn"
+              >
+                <Radio size={19} strokeWidth={1.75} />
+              </button>
+            )}
+
             {micSupported && settings.voice.dictationEnabled && (
               <button
                 type="button"

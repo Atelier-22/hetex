@@ -21,7 +21,6 @@ import {
 import { MessageBubble } from "./message-bubble";
 import { Composer, type ThinkMode } from "./composer";
 import { composerPlaceholder } from "./composer-placeholder";
-import { LiveVoicePanel } from "./live-voice-panel";
 import { AvielLockup } from "../logo";
 import { useSettingsStore } from "@/lib/settings/store";
 import { apiFetch, apiStream } from "@/lib/api-client";
@@ -97,7 +96,6 @@ export function ChatWindow({
     processedLocally?: boolean;
   } | null>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
-  const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
   // Seeded from the account default, then overridable per message from the
   // composer without changing the stored preference.
   const [thinkMode, setThinkMode] = useState<ThinkMode>(settings.ai.thinkMode);
@@ -764,26 +762,6 @@ export function ChatWindow({
           </button>
         )}
 
-        {liveVoiceOpen && (
-          <div className="mx-auto w-full max-w-3xl">
-            <LiveVoicePanel
-              conversationId={conversationId}
-              onClose={() => setLiveVoiceOpen(false)}
-              onTurn={(turn) =>
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: crypto.randomUUID(),
-                    role: turn.role,
-                    content: turn.text,
-                    createdAt: new Date(),
-                  },
-                ])
-              }
-            />
-          </div>
-        )}
-
         <Composer
           value={input}
           onChange={setInput}
@@ -805,6 +783,11 @@ export function ChatWindow({
           micSupported={micSupported}
           thinkMode={thinkMode}
           onThinkModeChange={setThinkMode}
+          onOpenLiveVoice={() =>
+            router.push(
+              conversationId ? `/voice?conversation=${conversationId}` : "/voice"
+            )
+          }
         />
       </div>
     </div>

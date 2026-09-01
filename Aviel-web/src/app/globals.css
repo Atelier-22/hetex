@@ -1222,3 +1222,453 @@ html[data-bubble="minimal"] .chat-bubble--user {
   .hx-action { width: 44px; height: 44px; }
   .hx-menu { min-width: 0; width: calc(100vw - 48px); }
 }
+
+/* ==========================================================================
+   Live voice
+   ==========================================================================
+
+   Mobile first, and deliberately single-theme. Voice mode is an immersive
+   surface — a deep navy ground with blue and orange light behind glass — and
+   the orb's whole visual language depends on being lit against dark. A light
+   variant would be a different design, not the same one recoloured, so this
+   commits rather than half-adapting.
+
+   Layout is a three-row grid: header, stage, controls. The stage takes the
+   remaining space and the orb centres inside it, which is what keeps the
+   controls reachable at the bottom on a phone regardless of transcript length. */
+
+.voice-screen {
+  --voice-dim: rgba(255, 255, 255, 0.55);
+  --voice-glass: rgba(255, 255, 255, 0.08);
+  --voice-border: rgba(255, 255, 255, 0.15);
+
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  color: #fff;
+  background-color: #07142f;
+  background-image:
+    radial-gradient(60% 40% at 15% 12%, rgba(0, 122, 255, 0.3), transparent 70%),
+    radial-gradient(55% 40% at 85% 25%, rgba(255, 107, 0, 0.22), transparent 70%),
+    radial-gradient(70% 50% at 50% 105%, rgba(47, 128, 255, 0.2), transparent 70%),
+    linear-gradient(180deg, #07142f 0%, #050d20 55%, #030711 100%);
+  /* Phone notches and home indicators. Without these the header sits under
+     the status bar and the controls under the gesture bar. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  overscroll-behavior: contain;
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+.voice-header {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.voice-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 44px is the accessibility floor for a touch target. */
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--voice-border);
+  background-color: var(--voice-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.voice-icon-btn:hover { background-color: rgba(255, 255, 255, 0.14); }
+.voice-icon-btn:active { transform: scale(0.94); }
+.voice-icon-btn:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 2px;
+}
+
+.voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: none;
+}
+/* State is carried by shape and label as well as colour — the label always
+   says which engine is answering, so the dot is reinforcement, not the signal. */
+.voice-dot--on {
+  background-color: #30d158;
+  box-shadow: 0 0 8px rgba(48, 209, 88, 0.8);
+}
+.voice-dot--off {
+  background-color: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+}
+
+/* --- Stage --------------------------------------------------------------- */
+
+.voice-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 8px 20px;
+  text-align: center;
+  overflow-y: auto;
+}
+
+.voice-greeting {
+  max-width: 22rem;
+  margin-bottom: 8px;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-wrap: balance;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.voice-orb-wrap {
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.voice-wave { margin-top: 2px; opacity: 0.95; }
+
+.voice-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.voice-status--live { color: #ff9f43; }
+.voice-status--neutral { color: rgba(255, 255, 255, 0.85); }
+.voice-status--warn { color: #ffd166; }
+.voice-status--bad { color: #ff8a80; }
+
+.voice-hint {
+  max-width: 20rem;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--voice-dim);
+}
+
+.voice-retry {
+  margin-top: 10px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--voice-border);
+  background-color: var(--voice-glass);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* --- Transcript ---------------------------------------------------------- */
+
+.voice-transcript {
+  width: 100%;
+  max-width: 30rem;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--voice-border);
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  text-align: left;
+}
+
+.voice-turn {
+  margin-bottom: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.voice-turn:last-child { margin-bottom: 0; }
+
+.voice-turn-who {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--voice-dim);
+}
+
+.voice-turn--user { color: #fff; }
+.voice-turn--assistant { color: rgba(255, 255, 255, 0.82); }
+.voice-turn--interim {
+  font-style: italic;
+  color: var(--voice-dim);
+}
+
+/* --- Controls ------------------------------------------------------------ */
+
+.voice-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  justify-items: center;
+  gap: 20px;
+  padding: 16px 24px 28px;
+}
+
+.voice-side-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 56px;
+  min-height: 56px;
+  padding: 8px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--voice-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.voice-side-btn > svg {
+  padding: 10px;
+  box-sizing: content-box;
+  border-radius: 999px;
+  border: 1px solid var(--voice-border);
+  background-color: var(--voice-glass);
+}
+
+.voice-side-btn:hover { color: #fff; }
+.voice-side-btn[aria-pressed="true"] { color: #58a6ff; }
+.voice-side-btn:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+
+/* The primary control. 76px, comfortably past the 48px guidance, because it is
+   the one thing someone reaches for without looking. */
+.voice-main-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-color: #fff;
+  color: #2f80ff;
+  cursor: pointer;
+  box-shadow: 0 8px 30px -8px rgba(47, 128, 255, 0.7);
+  transition: transform 120ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.voice-main-btn:active { transform: scale(0.95); }
+.voice-main-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.voice-main-btn:focus-visible { outline: 3px solid #58a6ff; outline-offset: 3px; }
+
+.voice-main-btn--listening {
+  border-color: #2f80ff;
+  box-shadow: 0 0 0 6px rgba(47, 128, 255, 0.18), 0 8px 30px -8px rgba(47, 128, 255, 0.8);
+}
+.voice-main-btn--speaking {
+  color: #ff6b00;
+  border-color: #ff7a18;
+  box-shadow: 0 0 0 6px rgba(255, 122, 24, 0.18), 0 8px 30px -8px rgba(255, 107, 0, 0.8);
+}
+.voice-main-btn--processing { border-color: #58a6ff; }
+.voice-main-btn--paused { color: #8b98b0; box-shadow: none; }
+
+.voice-main-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+}
+.voice-main-wave i {
+  display: block;
+  width: 3.5px;
+  height: 100%;
+  border-radius: 999px;
+  background-color: currentColor;
+  animation: voice-main-wave 900ms ease-in-out infinite;
+}
+.voice-main-wave i:nth-child(2) { animation-delay: 110ms; }
+.voice-main-wave i:nth-child(3) { animation-delay: 220ms; }
+.voice-main-wave i:nth-child(4) { animation-delay: 330ms; }
+.voice-main-wave i:nth-child(5) { animation-delay: 90ms; }
+
+@keyframes voice-main-wave {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+
+/* --- Settings sheet ------------------------------------------------------ */
+
+.voice-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  padding: 20px 20px calc(24px + env(safe-area-inset-bottom));
+  border-radius: 28px 28px 0 0;
+  border-top: 1px solid var(--voice-border);
+  background-color: rgba(7, 20, 47, 0.92);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  animation: voice-sheet-in 220ms cubic-bezier(0.2, 0, 0.2, 1);
+  max-height: 70%;
+  overflow-y: auto;
+}
+
+@keyframes voice-sheet-in {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+
+.voice-sheet-title {
+  margin: 14px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--voice-dim);
+}
+.voice-sheet-title:first-child { margin-top: 0; }
+
+.voice-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.voice-chip {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--voice-border);
+  background-color: var(--voice-glass);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  cursor: pointer;
+}
+.voice-chip.is-on {
+  background-color: #2f80ff;
+  border-color: #2f80ff;
+  color: #fff;
+}
+
+.voice-sheet-rows { display: flex; flex-direction: column; gap: 6px; }
+
+.voice-sheet-row {
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--voice-border);
+  background-color: var(--voice-glass);
+  color: #fff;
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.voice-sheet-note {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--voice-dim);
+}
+
+.voice-sheet-close {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 16px;
+  border-radius: 999px;
+  border: 0;
+  background-color: #fff;
+  color: #07142f;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- Tablet --------------------------------------------------------------
+   Not a bigger phone: the extra width goes to the orb and the transcript
+   moves beside it in landscape rather than below. */
+
+@media (min-width: 768px) {
+  .voice-greeting { font-size: 24px; max-width: 30rem; }
+  .voice-stage { gap: 8px; padding: 20px 40px; }
+  .voice-transcript { max-width: 36rem; }
+  .voice-controls { gap: 48px; padding-bottom: 40px; }
+}
+
+@media (min-width: 768px) and (orientation: landscape) {
+  /* Landscape has height to spare across, not down. The header spans the top,
+     the stage takes the width, and the controls stack vertically down the
+     right edge — which also puts them under the thumb of whichever hand is
+     holding that side.
+
+     These are placed on the screen's own grid, not the stage's: the controls
+     are a sibling of the stage, so positioning them in the stage's columns
+     silently did nothing and left them wherever they fell. */
+  .voice-screen {
+    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .voice-header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .voice-stage {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .voice-transcript {
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+
+  .voice-controls {
+    grid-column: 2;
+    grid-row: 2;
+    grid-template-columns: 1fr;
+    align-content: center;
+    gap: 24px;
+    padding: 0 28px;
+  }
+}
+
+/* --- Desktop -------------------------------------------------------------
+   An enhancement of the tablet layout, not a stretched phone. */
+
+@media (min-width: 1280px) {
+  .voice-greeting { font-size: 28px; }
+  .voice-stage { gap: 12px; }
+}
+
+/* --- Motion --------------------------------------------------------------
+   The canvases read the reduce-motion setting themselves and slow their own
+   loops; this covers the CSS animations. */
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-main-wave i,
+  .voice-sheet {
+    animation: none;
+  }
+  .voice-main-wave i { transform: scaleY(0.6); }
+}
+
+[data-animations="off"] .voice-main-wave i,
+[data-animations="off"] .voice-sheet {
+  animation: none;
+}

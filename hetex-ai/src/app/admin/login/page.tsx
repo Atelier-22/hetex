@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { HetexIcon } from "@/components/logo";
+import { wakeApi } from "@/lib/wake-api";
 
 /**
  * The admin area's own sign-in.
@@ -18,11 +19,24 @@ export default function AdminLoginPage() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Start the server waking now, while they are still typing. By the time the
+  // form is submitted it is usually already up.
+  useEffect(() => {
+    wakeApi();
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSlow(false);
+
+    // A wait with no explanation reads as broken. After a few seconds, say what
+    // is happening rather than leaving a spinner to be interpreted.
+    slowTimer.current = setTimeout(() => setSlow(true), 3500);
 
     try {
       const res = await fetch("/api/admin-session", {
@@ -31,18 +45,23 @@ export default function AdminLoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Sign-in failed");
         setLoading(false);
+        setSlow(false);
         return;
       }
 
       router.replace("/admin");
       router.refresh();
     } catch {
+      if (slowTimer.current) clearTimeout(slowTimer.current);
       setError("Couldn't reach the server. Try again.");
       setLoading(false);
+      setSlow(false);
     }
   }
 
@@ -92,6 +111,14 @@ export default function AdminLoginPage() {
           {error && (
             <p className="rounded-lg border border-hetex-red-500/30 bg-hetex-red-500/10 px-3 py-2 text-sm text-hetex-red-500">
               {error}
+            </p>
+          )}
+
+          {slow && !error && (
+            <p className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-xs leading-relaxed text-[var(--text-secondary)]">
+              Starting the server — it sleeps when nobody has used it for a
+              while, and can take up to 30 seconds to wake. This only happens on
+              the first request.
             </p>
           )}
 

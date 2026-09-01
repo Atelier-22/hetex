@@ -1,0 +1,38 @@
+name: Keep the API awake
+
+# Render's free tier stops the service after 15 minutes of inactivity, and the
+# next request pays 30-50 seconds to start it again. That cold start is the
+# single worst thing about using the app: every visit after a quiet spell looks
+# broken before it looks slow.
+#
+# Pinging /health keeps the instance running. The free tier includes 750
+# instance-hours a month and a month is ~730 hours, so one always-on service
+# fits — this is not a workaround, it is what the allowance is for.
+#
+# Note: GitHub disables scheduled workflows on a repository with no commits for
+# 60 days. If cold starts return after a long quiet period, that is why.
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub treats cron as best-effort and can be late under
+    # load, so 10 gives margin against the 15-minute idle timeout.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping the API
+        run: |
+          # --max-time allows for a cold start rather than failing the run when
+          # the ping is the request that happens to wake it.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 \
+            https://hetex.onrender.com/health)
+          echo "health -> $code"
+          # A 5xx is worth failing on; anything else means the service answered.
+          if [ "$code" -ge 500 ] || [ "$code" -eq 000 ]; then
+            echo "::error::API unhealthy (HTTP $code)"
+            exit 1
+          fi

@@ -52,7 +52,7 @@ export function AdvancedSection() {
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");
       a.href = url;
-      a.download = `aviel-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `Aviel-settings-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setNotice("Settings exported.");

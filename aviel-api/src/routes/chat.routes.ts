@@ -19,6 +19,11 @@ import { resolveThinkMode } from "../ai/think";
 import { generateLocal, isLocalModelAvailable } from "../ai/local-model";
 import { learnInBackground } from "../services/learning.service";
 import { getPlatformConfig } from "../settings/platform";
+import {
+  sessionForConversation,
+  sessionPromptBlock,
+  trackContextInBackground,
+} from "../services/session.service";
 import { checkLimit } from "../services/limits.service";
 import type { UserSettings } from "../settings/schema";
 
@@ -326,6 +331,10 @@ chatRouter.post(
     const memoryExcluded =
       excludeFromMemory ?? conversation.excludeFromMemory ?? false;
 
+    // A conversation may belong to an active session, which contributes its
+    // type's instructions and everything the session has established so far.
+    const session = await sessionForConversation(conversation.id);
+
     // Project instructions ride along with the prompt when the account has
     // project context switched on.
     let projectInstructions: string | null = null;
@@ -410,6 +419,8 @@ chatRouter.post(
       );
     }
 
+    if (session) notes.push(sessionPromptBlock(session));
+
     // Fast asks for brevity, Deep asks for working. Balanced adds nothing,
     // because the baseline prompt already describes the normal case.
     if (think.instruction) notes.push(think.instruction);
@@ -464,6 +475,14 @@ chatRouter.post(
 
     /** Runs after a reply has been delivered, never before. */
     const afterReply = async (fullText: string) => {
+      if (session && fullText.trim()) {
+        trackContextInBackground({
+          sessionId: session.id,
+          userMessage: message,
+          assistantMessage: fullText,
+        });
+      }
+
       if (fullText.trim() && settings.memory.enabled && !memoryExcluded) {
         learnInBackground({
           userId,

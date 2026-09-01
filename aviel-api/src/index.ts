@@ -17,6 +17,7 @@ import { integrationsRouter } from "./routes/integrations.routes";
 import { billingRouter } from "./routes/billing.routes";
 import { adminRouter } from "./routes/admin.routes";
 import { localAiRouter } from "./routes/local-ai.routes";
+import { sessionsRouter } from "./routes/sessions.routes";
 import { systemRouter } from "./routes/system.routes";
 import {
   libraryRouter,
@@ -77,6 +78,7 @@ app.use("/integrations", integrationsRouter);
 app.use("/billing", billingRouter);
 app.use("/admin", adminRouter);
 app.use("/local-ai", localAiRouter);
+app.use("/sessions", sessionsRouter);
 app.use("/system", systemRouter);
 app.use("/library", libraryRouter);
 app.use("/usage", usageRouter);

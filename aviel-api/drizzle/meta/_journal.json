@@ -43,6 +43,13 @@
       "when": 1788252794081,
       "tag": "0005_daffy_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788274037384,
+      "tag": "0006_talented_karen_page",
+      "breakpoints": true
     }
   ]
 }

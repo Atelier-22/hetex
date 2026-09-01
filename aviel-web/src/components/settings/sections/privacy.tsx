@@ -241,7 +241,7 @@ export function PrivacySection() {
             <SettingsButton
               busy={busy === "all"}
               onClick={() =>
-                download("/account/export", `aviel-export-${stamp}.json`, "all")
+                download("/account/export", `Aviel-export-${stamp}.json`, "all")
               }
             >
               <Download size={13} /> Download everything
@@ -251,7 +251,7 @@ export function PrivacySection() {
               onClick={() =>
                 download(
                   "/settings/export",
-                  `aviel-settings-${stamp}.json`,
+                  `Aviel-settings-${stamp}.json`,
                   "settings"
                 )
               }

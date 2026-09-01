@@ -136,7 +136,7 @@ accountRouter.get(
     res.setHeader("Content-Type", "application/json");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="aviel-export-${new Date().toISOString().slice(0, 10)}.json"`
+      `attachment; filename="Aviel-export-${new Date().toISOString().slice(0, 10)}.json"`
     );
     res.json({
       exportedAt: new Date().toISOString(),

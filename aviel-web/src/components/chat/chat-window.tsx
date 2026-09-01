@@ -311,7 +311,7 @@ export function ChatWindow({
     };
 
     if (settingsRef.current.advanced.debugMode) {
-      console.info("[aviel] sending", { ...body, attachments: files.length });
+      console.info("[Aviel] sending", { ...body, attachments: files.length });
     }
 
     try {
@@ -399,7 +399,7 @@ export function ChatWindow({
               )
             );
             if (settingsRef.current.advanced.debugMode) {
-              console.info("[aviel] turn meta", data);
+              console.info("[Aviel] turn meta", data);
             }
           } else if (eventType === "searching") {
             setSearching(true);

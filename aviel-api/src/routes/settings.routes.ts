@@ -276,7 +276,7 @@ settingsRouter.get(
     res.setHeader("Content-Type", "application/json");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="aviel-settings-${new Date()
+      `attachment; filename="Aviel-settings-${new Date()
         .toISOString()
         .slice(0, 10)}.json"`
     );

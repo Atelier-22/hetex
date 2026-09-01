@@ -317,6 +317,81 @@ export const conversations = pgTable(
   })
 );
 
+/**
+ * A session: a focused stretch of work with a type, a clock and a summary.
+ *
+ * A session wraps a conversation rather than replacing it. Messages still live
+ * in `messages` and are still reachable from the sidebar as a normal chat —
+ * which means a session adds framing without forking the data model, and
+ * deleting a session can leave the conversation intact if that is what the user
+ * chose.
+ */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Nullable and ON DELETE SET NULL: deleting the underlying conversation
+    // should not silently delete the session's summary and timings with it.
+    conversationId: text("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+
+    title: text("title").notNull().default("New session"),
+    // chat | voice | study | brainstorm | coding | research | creative | meeting
+    type: text("type").notNull().default("chat"),
+    // active | ended
+    state: text("state").notNull().default("active"),
+
+    /** The model and think mode in force for this session. */
+    model: text("model"),
+    thinkMode: text("think_mode").notNull().default("balanced"),
+
+    /**
+     * A temporary session is not kept once it ends: the user is asked, and
+     * choosing to delete removes the session and its conversation together.
+     */
+    temporary: boolean("temporary").notNull().default(false),
+
+    /**
+     * What the session has established so far, in the user's own framing.
+     * Injected into the prompt so "how should I handle the payments" resolves
+     * against "I am building a marketplace" said twenty turns earlier.
+     */
+    contextNotes: jsonb("context_notes").$type<string[]>().notNull().default([]),
+
+    summary: text("summary"),
+    summaryGeneratedAt: timestamp("summary_generated_at", { withTimezone: true }),
+
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    // The sidebar lists a user's sessions newest first; the state filter is
+    // what separates "resume this" from "this is finished".
+    userStateIdx: index("sessions_user_state_idx").on(t.userId, t.state, t.startedAt),
+    conversationIdx: index("sessions_conversation_idx").on(t.conversationId),
+  })
+);
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, { fields: [sessions.userId], references: [users.id] }),
+  conversation: one(conversations, {
+    fields: [sessions.conversationId],
+    references: [conversations.id],
+  }),
+}));
+
 export const messages = pgTable("messages", {
   id: id(),
   conversationId: text("conversation_id")

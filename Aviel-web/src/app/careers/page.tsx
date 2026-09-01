@@ -36,7 +36,7 @@ export default function CareersPage() {
           Aviel is open source. The most direct way in is to use it, find
           something wrong, and{" "}
           <a
-            href="https://github.com/Atelier-22/aviel/issues"
+            href="https://github.com/Atelier-22/Aviel/issues"
             target="_blank"
             rel="noreferrer noopener"
             className="text-accent hover:underline"

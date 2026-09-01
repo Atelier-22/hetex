@@ -25,12 +25,12 @@ const COLUMNS = [
       { href: "/help", label: "Help" },
       { href: "/status", label: "Status" },
       {
-        href: "https://github.com/Atelier-22/aviel",
+        href: "https://github.com/Atelier-22/Aviel",
         label: "Source on GitHub",
         external: true,
       },
       {
-        href: "https://github.com/Atelier-22/aviel/issues",
+        href: "https://github.com/Atelier-22/Aviel/issues",
         label: "Report a problem",
         external: true,
       },

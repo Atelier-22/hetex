@@ -88,7 +88,7 @@ export default function HelpPage() {
           There is no support desk yet — Aviel is a small team. The most
           reliable route is to{" "}
           <a
-            href="https://github.com/Atelier-22/aviel/issues"
+            href="https://github.com/Atelier-22/Aviel/issues"
             target="_blank"
             rel="noreferrer noopener"
             className="text-accent hover:underline"

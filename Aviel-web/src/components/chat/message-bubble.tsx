@@ -83,7 +83,7 @@ export function MessageBubble({
             </span>
           )
         ) : behavior.useMarkdown ? (
-          <div className="prose-aviel">
+          <div className="prose-Aviel">
             <ReactMarkdown
               components={{
                 code({ className, children, ...props }) {

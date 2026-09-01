@@ -26,7 +26,7 @@ describe("base32", () => {
   });
 
   it("ignores padding, whitespace and case", () => {
-    const buf = Buffer.from("aviel", "ascii");
+    const buf = Buffer.from("Aviel", "ascii");
     const encoded = base32Encode(buf);
     assert.deepEqual(base32Decode(`${encoded.toLowerCase()}  `), buf);
   });

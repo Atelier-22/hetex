@@ -237,48 +237,48 @@ body {
   }
 }
 
-.prose-aviel pre {
+.prose-Aviel pre {
   background-color: rgba(0, 0, 0, 0.04);
   border-radius: 0.75rem;
   padding: 1rem;
   overflow-x: auto;
 }
 
-.dark .prose-aviel pre {
+.dark .prose-Aviel pre {
   background-color: rgba(255, 255, 255, 0.06);
 }
 
-.prose-aviel code {
+.prose-Aviel code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.875em;
 }
 
-.prose-aviel p {
+.prose-Aviel p {
   margin: 0.35rem 0;
 }
 
-.prose-aviel ul,
-.prose-aviel ol {
+.prose-Aviel ul,
+.prose-Aviel ol {
   margin: 0.35rem 0;
   padding-left: 1.25rem;
 }
 
-.prose-aviel ul {
+.prose-Aviel ul {
   list-style: disc;
 }
 
-.prose-aviel ol {
+.prose-Aviel ol {
   list-style: decimal;
 }
 
-.prose-aviel h1,
-.prose-aviel h2,
-.prose-aviel h3 {
+.prose-Aviel h1,
+.prose-Aviel h2,
+.prose-Aviel h3 {
   font-weight: 600;
   margin: 0.6rem 0 0.3rem;
 }
 
-.prose-aviel a {
+.prose-Aviel a {
   color: var(--accent-solid);
   text-decoration: underline;
 }
@@ -537,7 +537,7 @@ html[data-bubble="minimal"] .chat-bubble--user {
   cursor: pointer;
 }
 
-.prose-aviel code {
+.prose-Aviel code {
   font-size: var(--code-size, 0.875em);
 }
 

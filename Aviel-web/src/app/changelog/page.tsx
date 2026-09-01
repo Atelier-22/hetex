@@ -70,7 +70,7 @@ export default function ChangelogPage() {
       <p className="mt-10 text-xs text-[var(--text-secondary)]">
         Aviel is open source — the full commit history is on{" "}
         <a
-          href="https://github.com/Atelier-22/aviel/commits/main"
+          href="https://github.com/Atelier-22/Aviel/commits/main"
           target="_blank"
           rel="noreferrer noopener"
           className="text-accent hover:underline"

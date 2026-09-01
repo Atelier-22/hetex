@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useSettingsStore } from "@/lib/settings/store";
+import type { UserSettings } from "@/lib/settings/types";
 import { apiFetch, apiStream } from "@/lib/api-client";
 import {
   getSpeechRecognition,
@@ -51,6 +52,13 @@ type Turn = { id: string; role: "user" | "assistant"; text: string };
 
 type SessionType = { id: string; label: string; description: string };
 
+type SessionRecord = {
+  id: string;
+  type: string;
+  conversationId: string | null;
+  temporary: boolean;
+};
+
 export function LiveVoiceScreen({
   conversationId,
   sessionId,
@@ -61,7 +69,7 @@ export function LiveVoiceScreen({
   onExit: () => void;
 }) {
   const router = useRouter();
-  const { settings, meta } = useSettingsStore();
+  const { settings, meta, update } = useSettingsStore();
   const { voices } = useSpeechVoices();
 
   const [state, setStateRaw] = useState<VoiceState>("idle");
@@ -74,6 +82,8 @@ export function LiveVoiceScreen({
   const [showSettings, setShowSettings] = useState(false);
   const [sessionTypes, setSessionTypes] = useState<SessionType[]>([]);
   const [sessionType, setSessionType] = useState("chat");
+  const [sessionSaving, setSessionSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [online, setOnline] = useState(true);
 
@@ -89,9 +99,15 @@ export function LiveVoiceScreen({
   const stateRef = useRef<VoiceState>("idle");
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const sessionTypeRef = useRef(sessionType);
+  sessionTypeRef.current = sessionType;
   const finalRef = useRef("");
   const convRef = useRef(conversationId);
   const interruptRaf = useRef(0);
+  /** The server-side session this conversation belongs to, once one exists. */
+  const sessionRef = useRef<string | null>(sessionId ?? null);
+  /** Number of completed exchanges, used to decide whether a summary is worth asking for. */
+  const exchangesRef = useRef(0);
 
   const reducedMotion =
     settings.accessibility.reduceMotion || settings.appearance.animations === "off";
@@ -163,14 +179,88 @@ export function LiveVoiceScreen({
 
   useEffect(() => teardown, [teardown]);
 
+  /**
+   * Close the session on unmount too, not only when End is pressed.
+   *
+   * Leaving with the browser's back gesture never runs `end`, which would leave
+   * the session open forever with no end time and a duration that grows until
+   * someone notices. Safe under StrictMode's double-invoke because a session id
+   * only exists after `begin` has run.
+   */
+  useEffect(
+    () => () => {
+      const id = sessionRef.current;
+      if (!id) return;
+      sessionRef.current = null;
+      void apiFetch(`/sessions/${id}/end`, {
+        method: "POST",
+        body: JSON.stringify({ summarize: false }),
+      }).catch(() => {});
+    },
+    []
+  );
+
   const end = useCallback(
     (reason?: string) => {
       teardown();
       stateRef.current = "idle";
       setStateRaw("idle");
       if (reason) setError(reason);
+
+      // Close the session record so it stops counting as open and gets its
+      // duration written. A summary is only worth a model call once there is
+      // something to summarise, and only if the transcript is being kept —
+      // summarising a session the user asked not to save would defeat the point
+      // of the setting.
+      const id = sessionRef.current;
+      if (!id) return;
+      sessionRef.current = null;
+      void apiFetch(`/sessions/${id}/end`, {
+        method: "POST",
+        body: JSON.stringify({
+          summarize:
+            exchangesRef.current >= 2 && settingsRef.current.liveVoice.saveTranscript,
+        }),
+      }).catch(() => {
+        // Ending is best-effort. The session row is still closed by its own
+        // retention sweep, and failing here must not block leaving the screen.
+      });
     },
     [teardown]
+  );
+
+  /**
+   * Session type.
+   *
+   * Before the session starts this is only a choice; once it is running the
+   * change goes to the server, because the type is what shapes the system
+   * prompt for every subsequent turn. If the server refuses, the chip goes back
+   * rather than showing a mode the conversation is not actually in.
+   */
+  const changeSessionType = useCallback(
+    async (next: string) => {
+      const previous = sessionType;
+      setSessionType(next);
+
+      const id = sessionRef.current;
+      if (!id) return;
+
+      setSessionSaving(true);
+      try {
+        await apiFetch(`/sessions/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ type: next }),
+        });
+      } catch (err) {
+        setSessionType(previous);
+        setError(
+          err instanceof Error ? err.message : "That session type couldn't be applied."
+        );
+      } finally {
+        setSessionSaving(false);
+      }
+    },
+    [sessionType]
   );
 
   /* ---- Speaking ---------------------------------------------------------
@@ -335,6 +425,7 @@ export function LiveVoiceScreen({
         }
 
         if (!full.trim()) throw new Error("No reply came back.");
+        exchangesRef.current += 1;
         speakReply(full);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
@@ -442,6 +533,34 @@ export function LiveVoiceScreen({
       return;
     }
 
+    // The session record is created only once the microphone is actually open.
+    // Creating it before would leave a trail of empty sessions every time
+    // someone opened this screen and denied the permission prompt.
+    if (!sessionRef.current) {
+      try {
+        const session = await apiFetch<SessionRecord>("/sessions", {
+          method: "POST",
+          body: JSON.stringify({
+            type: sessionTypeRef.current,
+            temporary: !settingsRef.current.liveVoice.saveTranscript,
+            // Adopt the conversation this was entered from, so speaking
+            // continues the thread rather than starting a parallel one.
+            ...(convRef.current ? { conversationId: convRef.current } : {}),
+          }),
+        });
+        sessionRef.current = session.id;
+        if (session.conversationId) convRef.current = session.conversationId;
+      } catch (err) {
+        engine.stop();
+        engineRef.current = null;
+        setError(
+          err instanceof Error ? err.message : "The session couldn't be started."
+        );
+        setState("error");
+        return;
+      }
+    }
+
     // The loops read these refs directly; assigning the arrays once avoids a
     // copy per frame.
     binsRef.current = engine.bins;
@@ -456,6 +575,49 @@ export function LiveVoiceScreen({
     setState("listening");
     startListening();
   }, [setState, startListening]);
+
+  /**
+   * Play a sample in the currently selected voice.
+   *
+   * If the session is live the recogniser has to come down first, or the sample
+   * is transcribed as though the user had said it — the microphone cannot tell
+   * the speakers apart from a person.
+   */
+  const previewVoice = useCallback(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const wasListening = stateRef.current === "listening";
+    if (wasListening) {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+      engineRef.current?.setMuted(true);
+    }
+
+    window.speechSynthesis.cancel();
+
+    const v = settingsRef.current.voice;
+    const u = new SpeechSynthesisUtterance("This is how I'll sound.");
+    u.rate = v.rate;
+    u.pitch = v.pitch;
+    u.volume = v.volume;
+    const voice = pickVoice(v, voices, settingsRef.current.language.voiceOutput);
+    if (voice) {
+      u.voice = voice;
+      u.lang = voice.lang;
+    }
+
+    const restore = () => {
+      setPreviewing(false);
+      if (!wasListening) return;
+      engineRef.current?.setMuted(false);
+      if (stateRef.current === "listening") startListening();
+    };
+    u.onend = restore;
+    u.onerror = restore;
+
+    setPreviewing(true);
+    window.speechSynthesis.speak(u);
+  }, [voices, startListening]);
 
   const pause = useCallback(() => {
     recognitionRef.current?.abort();
@@ -634,41 +796,171 @@ export function LiveVoiceScreen({
         </button>
       </div>
 
-      {/* ---- Settings sheet ---- */}
+      {/* ---- Settings sheet ----
+          Everything here is adjustable without leaving the conversation.
+          Sending someone to the settings screen mid-session meant tearing down
+          the microphone to change the speaking rate. */}
       {showSettings && (
         <div className="voice-sheet" role="dialog" aria-label="Voice settings">
-          <p className="voice-sheet-title">Session</p>
-          <div className="voice-chips">
-            {sessionTypes.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSessionType(s.id)}
-                aria-pressed={sessionType === s.id}
-                className={`voice-chip ${sessionType === s.id ? "is-on" : ""}`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+          <div className="voice-sheet-scroll">
+            {/* Only when the server actually returned a catalogue. A heading
+                above nothing reads as a section that failed to load, which is
+                exactly what it would be. */}
+            {sessionTypes.length > 0 && (
+              <>
+                <div className="voice-sheet-head">
+                  <p className="voice-sheet-title">Session</p>
+                  {sessionSaving && <Loader2 size={13} className="animate-spin" />}
+                </div>
+                <div className="voice-chips">
+                  {sessionTypes.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => void changeSessionType(s.id)}
+                      disabled={sessionSaving}
+                      aria-pressed={sessionType === s.id}
+                      title={s.description}
+                      className={`voice-chip ${sessionType === s.id ? "is-on" : ""}`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                {activeSession && (
+                  <p className="voice-sheet-hint">{activeSession.description}</p>
+                )}
+              </>
+            )}
 
-          <p className="voice-sheet-title">Voice</p>
-          <div className="voice-sheet-rows">
-            <SheetLink
-              label="Voice, speed and pitch"
-              onClick={() => router.push("/chat?settings=voice")}
+            <p className="voice-sheet-title">Voice</p>
+            <SheetSelect
+              label="Speaking voice"
+              value={settings.voice.outputVoice ?? ""}
+              onChange={(v) =>
+                void update({ voice: { outputVoice: v || null } })
+              }
+              options={[
+                { value: "", label: "System default" },
+                ...voices.map((v) => ({
+                  value: v.name,
+                  label: `${v.name} — ${v.lang}`,
+                })),
+              ]}
+              after={
+                <button
+                  type="button"
+                  onClick={previewVoice}
+                  disabled={previewing || state === "speaking"}
+                  className="voice-sheet-preview"
+                >
+                  {previewing ? "Playing…" : "Preview"}
+                </button>
+              }
             />
-            <SheetLink
-              label="Interruption and auto-listen"
+
+            <SheetRange
+              label="Speed"
+              value={settings.voice.rate}
+              min={0.5}
+              max={2}
+              step={0.1}
+              format={(v) => `${v.toFixed(1)}×`}
+              onChange={(v) => void update({ voice: { rate: v } })}
+            />
+            <SheetRange
+              label="Pitch"
+              value={settings.voice.pitch}
+              min={0.5}
+              max={2}
+              step={0.1}
+              format={(v) => v.toFixed(1)}
+              onChange={(v) => void update({ voice: { pitch: v } })}
+            />
+            <SheetRange
+              label="Volume"
+              value={settings.voice.volume}
+              min={0}
+              max={1}
+              step={0.05}
+              format={(v) => `${Math.round(v * 100)}%`}
+              onChange={(v) => void update({ voice: { volume: v } })}
+            />
+
+            <SheetSelect
+              label="Response style"
+              value={settings.personality.responseStyle}
+              onChange={(v) =>
+                void update({
+                  personality: {
+                    responseStyle: v as UserSettings["personality"]["responseStyle"],
+                  },
+                })
+              }
+              options={[
+                { value: "concise", label: "Concise — best for talking" },
+                { value: "balanced", label: "Balanced" },
+                { value: "detailed", label: "Detailed" },
+                { value: "very_detailed", label: "Very detailed" },
+              ]}
+            />
+
+            <p className="voice-sheet-title">Conversation</p>
+            <SheetToggle
+              label="Let me interrupt"
+              description="Speaking over Aviel stops it and hands the turn back."
+              checked={settings.liveVoice.allowInterrupt}
+              onChange={(v) => void update({ liveVoice: { allowInterrupt: v } })}
+            />
+            <SheetToggle
+              label="Listen automatically"
+              description="Start listening again as soon as Aviel finishes."
+              checked={settings.liveVoice.continuousListening}
+              onChange={(v) =>
+                void update({ liveVoice: { continuousListening: v } })
+              }
+            />
+            <SheetToggle
+              label="Speak replies aloud"
+              description="Turn off to read replies in the transcript instead."
+              checked={settings.liveVoice.autoResponse}
+              onChange={(v) => void update({ liveVoice: { autoResponse: v } })}
+            />
+            <SheetToggle
+              label="End turns on silence"
+              description="A pause finishes your turn, so you needn't press anything."
+              checked={settings.liveVoice.voiceActivityDetection}
+              onChange={(v) =>
+                void update({ liveVoice: { voiceActivityDetection: v } })
+              }
+            />
+            <SheetToggle
+              label="Noise cancellation"
+              description="Applies from the next session — the microphone is already open."
+              checked={settings.voice.noiseReduction}
+              onChange={(v) => void update({ voice: { noiseReduction: v } })}
+            />
+            <SheetToggle
+              label="Keep this transcript"
+              description="Off means the conversation is discarded when it ends."
+              checked={settings.liveVoice.saveTranscript}
+              onChange={(v) => void update({ liveVoice: { saveTranscript: v } })}
+            />
+
+            <p className="voice-sheet-note">
+              {localOnly
+                ? "A local model is available on this server, so this conversation can be processed without leaving it."
+                : "This conversation is processed by a hosted service. Speech recognition and playback stay in your browser — no audio is uploaded."}
+            </p>
+
+            <button
+              type="button"
               onClick={() => router.push("/chat?settings=live-voice")}
-            />
+              className="voice-sheet-row"
+            >
+              All voice settings
+            </button>
           </div>
-
-          <p className="voice-sheet-note">
-            {localOnly
-              ? "A local model is available on this server, so this conversation can be processed without leaving it."
-              : "This conversation is processed by a hosted service. Speech recognition and playback stay in your browser — no audio is uploaded."}
-          </p>
 
           <button
             type="button"
@@ -683,10 +975,114 @@ export function LiveVoiceScreen({
   );
 }
 
-function SheetLink({ label, onClick }: { label: string; onClick: () => void }) {
+/* -------------------------------------------------------------------------- */
+/* Sheet controls                                                             */
+/*                                                                            */
+/* Deliberately local rather than reusing the settings-screen primitives:      */
+/* those are built for a wide two-column form on an opaque panel, and they     */
+/* look wrong sitting on glass over a live orb. The state they write is the    */
+/* same store, so a change here shows up there.                               */
+/* -------------------------------------------------------------------------- */
+
+function SheetToggle({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
-    <button type="button" onClick={onClick} className="voice-sheet-row">
-      {label}
-    </button>
+    <div className="voice-sheet-field">
+      <div className="min-w-0">
+        <p className="voice-sheet-label">{label}</p>
+        {description && <p className="voice-sheet-desc">{description}</p>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`voice-switch ${checked ? "is-on" : ""}`}
+      >
+        <span />
+      </button>
+    </div>
+  );
+}
+
+function SheetRange({
+  label,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format: (v: number) => string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="voice-sheet-field voice-sheet-field--stack">
+      <div className="flex items-center justify-between gap-3">
+        <p className="voice-sheet-label">{label}</p>
+        <span className="voice-sheet-value tabular-nums">{format(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="voice-range"
+      />
+    </div>
+  );
+}
+
+function SheetSelect({
+  label,
+  value,
+  options,
+  onChange,
+  after,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  after?: React.ReactNode;
+}) {
+  return (
+    <div className="voice-sheet-field voice-sheet-field--stack">
+      <p className="voice-sheet-label">{label}</p>
+      <div className="flex items-center gap-2">
+        <select
+          value={value}
+          aria-label={label}
+          onChange={(e) => onChange(e.target.value)}
+          className="voice-select"
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {after}
+      </div>
+    </div>
   );
 }

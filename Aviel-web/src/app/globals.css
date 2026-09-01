@@ -1057,39 +1057,9 @@ html[data-bubble="minimal"] .chat-bubble--user {
 }
 
 /* --- Waveform ------------------------------------------------------------
-   Drawn as bars rather than an icon glyph so it can animate while listening
-   without swapping the element. */
-
-.hx-wave {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 18px;
-}
-
-.hx-wave i {
-  display: block;
-  width: 2.5px;
-  border-radius: 999px;
-  background-color: currentColor;
-  height: 100%;
-  transform-origin: center;
-}
-
-/* Resting shape: the varying heights the reference shows. */
-.hx-wave i:nth-child(1) { transform: scaleY(0.35); }
-.hx-wave i:nth-child(2) { transform: scaleY(0.7); }
-.hx-wave i:nth-child(3) { transform: scaleY(1); }
-.hx-wave i:nth-child(4) { transform: scaleY(0.55); }
-.hx-wave i:nth-child(5) { transform: scaleY(0.28); }
-
-.hx-wave--live i {
-  animation: hx-wave 900ms var(--ease) infinite;
-}
-.hx-wave--live i:nth-child(2) { animation-delay: 120ms; }
-.hx-wave--live i:nth-child(3) { animation-delay: 240ms; }
-.hx-wave--live i:nth-child(4) { animation-delay: 360ms; }
-.hx-wave--live i:nth-child(5) { animation-delay: 80ms; }
+   The mark itself is a component now — LiveVoiceIcon — so the composer's
+   button and the Live Voice settings section draw the same symbol. Only the
+   keyframes remain here, for the listening indicator below. */
 
 @keyframes hx-wave {
   0%, 100% { transform: scaleY(0.25); }
@@ -1527,9 +1497,32 @@ html[data-bubble="minimal"] .chat-bubble--user {
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
   animation: voice-sheet-in 220ms cubic-bezier(0.2, 0, 0.2, 1);
-  max-height: 70%;
-  overflow-y: auto;
+  /* The sheet is now a full control panel rather than two links, so it splits
+     into a scrolling body and a Done button that stays put. Scrolling the whole
+     sheet would push the only way out off the bottom of a phone. */
+  display: flex;
+  flex-direction: column;
+  max-height: 82%;
 }
+
+.voice-sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  /* Marks where the scrolling body ends, so a row cut off at the boundary
+     reads as "there is more below" rather than as a broken row. */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.voice-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--voice-dim);
+}
+.voice-sheet-head .voice-sheet-title { margin-top: 0; }
 
 @keyframes voice-sheet-in {
   from { transform: translateY(100%); }
@@ -1578,6 +1571,116 @@ html[data-bubble="minimal"] .chat-bubble--user {
   cursor: pointer;
 }
 
+.voice-sheet-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--voice-dim);
+}
+
+/* --- Inline controls -----------------------------------------------------
+   Voice, speed and conversation behaviour are adjustable here rather than in
+   the settings screen, because changing them used to mean leaving the session
+   — which tore down the microphone to alter the speaking rate. */
+
+.voice-sheet-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.voice-sheet-field:last-of-type { border-bottom: 0; }
+
+.voice-sheet-field--stack {
+  display: block;
+}
+.voice-sheet-field--stack > * + * { margin-top: 9px; }
+
+.voice-sheet-label {
+  margin: 0;
+  font-size: 14.5px;
+  color: #fff;
+}
+
+.voice-sheet-desc {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--voice-dim);
+}
+
+.voice-sheet-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #58a6ff;
+}
+
+.voice-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 50px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--voice-border);
+  background-color: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.voice-switch > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #fff;
+  transition: transform 160ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+.voice-switch.is-on {
+  background-color: #2f80ff;
+  border-color: #2f80ff;
+}
+.voice-switch.is-on > span { transform: translateX(20px); }
+
+.voice-select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--voice-border);
+  background-color: rgba(7, 20, 47, 0.9);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  /* Native options render on the OS layer, which does not inherit the sheet's
+     dark glass — this is what keeps them from arriving as black-on-black. */
+  color-scheme: dark;
+}
+
+.voice-sheet-preview {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--voice-border);
+  background-color: var(--voice-glass);
+  color: #fff;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.voice-sheet-preview:disabled { opacity: 0.5; cursor: default; }
+
+.voice-range {
+  width: 100%;
+  height: 26px;
+  background: transparent;
+  cursor: pointer;
+  accent-color: #2f80ff;
+}
+
 .voice-sheet-note {
   margin-top: 16px;
   font-size: 12px;
@@ -1589,6 +1692,7 @@ html[data-bubble="minimal"] .chat-bubble--user {
   width: 100%;
   min-height: 48px;
   margin-top: 16px;
+  flex-shrink: 0;
   border-radius: 999px;
   border: 0;
   background-color: #fff;
@@ -1654,6 +1758,30 @@ html[data-bubble="minimal"] .chat-bubble--user {
 @media (min-width: 1280px) {
   .voice-greeting { font-size: 28px; }
   .voice-stage { gap: 12px; }
+}
+
+/* --- Sheet on wider screens ----------------------------------------------
+   A bottom sheet is a phone idiom. Left edge-to-edge on a tablet it produces
+   metre-wide sliders and a select the width of the screen, so above 768px it
+   becomes a centred panel that floats clear of the bottom instead. */
+
+@media (min-width: 768px) {
+  .voice-sheet {
+    left: 50%;
+    right: auto;
+    bottom: 24px;
+    width: min(540px, calc(100% - 48px));
+    transform: translateX(-50%);
+    border: 1px solid var(--voice-border);
+    border-radius: 24px;
+    max-height: min(74%, 640px);
+  }
+
+  @keyframes voice-sheet-in-centered {
+    from { transform: translate(-50%, 24px); opacity: 0; }
+    to   { transform: translate(-50%, 0);    opacity: 1; }
+  }
+  .voice-sheet { animation-name: voice-sheet-in-centered; }
 }
 
 /* --- Motion --------------------------------------------------------------

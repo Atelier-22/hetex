@@ -8,6 +8,7 @@
 // Keeping that index here rather than scraping the rendered DOM means a section
 // that has not been opened is still searchable.
 
+import type { ComponentType } from "react";
 import {
   Accessibility,
   Bell,
@@ -30,13 +31,13 @@ import {
   MessagesSquare,
   Mic,
   Palette,
-  RadioTower,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   Brain,
   User,
 } from "lucide-react";
+import { LiveVoiceIcon } from "@/components/voice/live-voice-icon";
 import type { SettingsGroup } from "@/lib/settings/types";
 
 export const SECTION_IDS = [
@@ -92,12 +93,23 @@ export const CATEGORIES: { id: CategoryId; label: string }[] = [
   { id: "system", label: "System" },
 ];
 
+/**
+ * Sections are almost all iconed from lucide, but Live Voice carries the
+ * product's own mark instead — the same bars as the composer's blue button, so
+ * the symbol you tap and the symbol you configure are visibly one feature.
+ */
+export type SectionIcon = ComponentType<{
+  size?: number | string;
+  className?: string;
+  strokeWidth?: number | string;
+}>;
+
 export interface SectionDef {
   id: SectionId;
   category: CategoryId;
   label: string;
   description: string;
-  icon: LucideIcon;
+  icon: SectionIcon;
   /** The settings group this section resets, when it maps to exactly one. */
   group?: SettingsGroup;
   /** Individual settings inside, so search can find them by name. */
@@ -293,7 +305,7 @@ export const SECTIONS: SectionDef[] = [
     category: "media",
     label: "Live voice",
     description: "Hands-free back-and-forth conversation.",
-    icon: RadioTower,
+    icon: LiveVoiceIcon,
     group: "liveVoice",
     entries: [
       "live voice",

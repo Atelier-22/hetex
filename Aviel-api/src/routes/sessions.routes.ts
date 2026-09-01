@@ -56,6 +56,13 @@ const createSchema = z.object({
   temporary: z.boolean().default(false),
   thinkMode: z.enum(["fast", "balanced", "deep"]).optional(),
   model: z.string().max(80).nullable().optional(),
+  /**
+   * Wrap an existing conversation instead of starting a new one. This is what
+   * live voice sends when you enter it from a chat that is already going —
+   * without it, saying "read that back to me" out loud would be answered by a
+   * model that had never seen the thread you were pointing at.
+   */
+  conversationId: z.string().optional(),
 });
 
 /**
@@ -96,15 +103,37 @@ sessionsRouter.post(
     const temporary =
       parsed.data.temporary || !settings.conversation.saveConversations;
 
-    const [conversation] = await db
-      .insert(schema.conversations)
-      .values({
-        userId: req.userId!,
-        title: parsed.data.title ?? `${SESSION_TYPE_META[parsed.data.type].label} session`,
-        model,
-        ...(parsed.data.projectId ? { projectId: parsed.data.projectId } : {}),
-      })
-      .returning();
+    const title =
+      parsed.data.title ?? `${SESSION_TYPE_META[parsed.data.type].label} session`;
+
+    // Adopting an existing conversation is only allowed if it is the caller's.
+    // Trusting the id from the body would let anyone attach a session — and
+    // therefore read the messages back through GET /:id — to a stranger's thread.
+    let conversation = parsed.data.conversationId
+      ? await db.query.conversations.findFirst({
+          where: and(
+            eq(schema.conversations.id, parsed.data.conversationId),
+            eq(schema.conversations.userId, req.userId!)
+          ),
+        })
+      : undefined;
+
+    if (parsed.data.conversationId && !conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    if (!conversation) {
+      [conversation] = await db
+        .insert(schema.conversations)
+        .values({
+          userId: req.userId!,
+          title,
+          model,
+          ...(parsed.data.projectId ? { projectId: parsed.data.projectId } : {}),
+        })
+        .returning();
+    }
 
     const [session] = await db
       .insert(schema.sessions)
@@ -112,7 +141,7 @@ sessionsRouter.post(
         userId: req.userId!,
         conversationId: conversation.id,
         ...(parsed.data.projectId ? { projectId: parsed.data.projectId } : {}),
-        title: parsed.data.title ?? `${SESSION_TYPE_META[parsed.data.type].label} session`,
+        title,
         type: parsed.data.type,
         model,
         thinkMode: parsed.data.thinkMode ?? settings.ai.thinkMode,

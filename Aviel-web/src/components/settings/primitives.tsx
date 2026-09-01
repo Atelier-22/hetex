@@ -17,8 +17,8 @@ import {
   Info,
   Loader2,
   RotateCcw,
-  type LucideIcon,
 } from "lucide-react";
+import type { SectionIcon } from "./registry";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -112,7 +112,7 @@ export function SettingsRow({
 }: {
   label: string;
   description?: React.ReactNode;
-  icon?: LucideIcon;
+  icon?: SectionIcon;
   children?: React.ReactNode;
   hidden?: boolean;
   /** Why this control cannot be used. Rendered under the label. */
@@ -704,7 +704,7 @@ export function LinkRow({
   description?: string;
   onClick?: () => void;
   href?: string;
-  icon?: LucideIcon;
+  icon?: SectionIcon;
 }) {
   const content = (
     <>

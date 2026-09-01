@@ -27,7 +27,6 @@ import {
   Mic,
   Paperclip,
   Plus,
-  Radio,
   Sparkles,
   Square,
   X,
@@ -35,6 +34,7 @@ import {
 import { apiFetch } from "@/lib/api-client";
 import { useSettingsStore } from "@/lib/settings/store";
 import { composerPlaceholder } from "./composer-placeholder";
+import { LiveVoiceIcon } from "@/components/voice/live-voice-icon";
 
 export type ThinkMode = "fast" | "balanced" | "deep";
 export type VoiceState = "idle" | "listening" | "transcribing";
@@ -47,15 +47,6 @@ export type ComposerAttachment = {
 };
 
 type Project = { id: string; name: string };
-
-/** Five bars at the heights the reference shows, animated while listening. */
-function Waveform({ live = false }: { live?: boolean }) {
-  return (
-    <span className={`hx-wave ${live ? "hx-wave--live" : ""}`} aria-hidden>
-      <i /><i /><i /><i /><i />
-    </span>
-  );
-}
 
 export function Composer({
   value,
@@ -214,20 +205,33 @@ export function Composer({
     }
   }
 
-  /** Empty field: the blue button starts voice. With content: it sends. */
+  const liveVoiceAvailable = Boolean(
+    onOpenLiveVoice && settings.liveVoice.enabled && micSupported
+  );
+
+  /**
+   * The blue button.
+   *
+   * Send when there is something to send, stop while a reply streams, and go
+   * live when the field is empty. It never dictates — that is the microphone
+   * beside it, and giving one button both jobs is what made the two
+   * indistinguishable.
+   */
   function primaryAction() {
     if (isStreaming) return onStop();
     if (canSend) return onSend();
-    if (micSupported) return onToggleVoice();
+    if (liveVoiceAvailable) return onOpenLiveVoice?.();
   }
+
+  const primaryDisabled = !isStreaming && !canSend && !liveVoiceAvailable;
 
   const primaryLabel = isStreaming
     ? "Stop generating"
     : canSend
       ? "Send message"
-      : listening
-        ? "Stop listening"
-        : "Start voice input";
+      : liveVoiceAvailable
+        ? "Start a live voice conversation"
+        : "Type a message to send";
 
   return (
     <div className="mx-auto w-full max-w-[820px]">
@@ -471,25 +475,18 @@ export function Composer({
             </button>
           </div>
 
-          {/* Bottom-right */}
+          {/* Bottom-right.
+              Two controls, not three. The microphone dictates into this box;
+              the blue button goes live. They were previously three because the
+              blue one also started dictation, which made it and the microphone
+              the same action wearing two icons. */}
           <div className="hx-rail hx-rail--right">
-            {onOpenLiveVoice && settings.liveVoice.enabled && micSupported && (
-              <button
-                type="button"
-                onClick={onOpenLiveVoice}
-                aria-label="Start a live voice conversation"
-                title="Live voice — talk and listen hands-free"
-                className="hx-icon-btn"
-              >
-                <Radio size={19} strokeWidth={1.75} />
-              </button>
-            )}
-
             {micSupported && settings.voice.dictationEnabled && (
               <button
                 type="button"
                 onClick={onToggleVoice}
-                aria-label={listening ? "Stop listening" : "Dictate a message"}
+                aria-label={listening ? "Stop dictating" : "Dictate instead of typing"}
+                title="Speak instead of typing"
                 aria-pressed={listening}
                 className="hx-icon-btn"
               >
@@ -500,8 +497,9 @@ export function Composer({
             <button
               type="button"
               onClick={primaryAction}
-              disabled={!isStreaming && !canSend && !micSupported}
+              disabled={primaryDisabled}
               aria-label={primaryLabel}
+              title={primaryLabel}
               className={`hx-action ${isStreaming ? "hx-action--stop" : ""}`}
             >
               {isStreaming ? (
@@ -509,7 +507,7 @@ export function Composer({
               ) : canSend ? (
                 <ArrowUp size={20} strokeWidth={2.4} />
               ) : (
-                <Waveform live={listening} />
+                <LiveVoiceIcon size={22} />
               )}
             </button>
           </div>

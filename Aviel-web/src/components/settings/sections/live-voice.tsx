@@ -1,6 +1,6 @@
 "use client";
 
-import { Radio } from "lucide-react";
+import { LiveVoiceIcon } from "@/components/voice/live-voice-icon";
 import {
   Callout,
   SaveIndicator,
@@ -65,7 +65,7 @@ export function LiveVoiceSection() {
       <SettingsCard title="Session">
         <SettingsRow
           label="Live voice"
-          icon={Radio}
+          icon={LiveVoiceIcon}
           description="Adds a live voice button to the chat composer."
         >
           <SettingsToggle

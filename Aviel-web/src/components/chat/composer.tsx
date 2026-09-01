@@ -1,22 +1,26 @@
 "use client";
 
-// Aviel — the chat composer.
+// Aviel — the composer.
 //
-// One rounded surface holding every control, rather than a row of separate
-// circular buttons. Layout, top row then bottom row:
+// Structure follows the reference exactly: one large rounded glass pane, the
+// field sitting at the top-left rather than vertically centred, and the
+// controls pinned along the bottom — plus on the left, microphone then the
+// blue circular action on the right.
 //
-//   [ textarea, auto-growing                                   ]
-//   [ +   Think ▾   web?  project?              mic     send/stop ]
+// It is positioned rather than laid out as a flex row on purpose. The field
+// grows downward as it fills, and absolute corners mean nothing else moves
+// when it does; a flex row would drift every control as the text wrapped.
 //
-// The `+` menu, the Think control and the microphone all reflect what this
-// server and this account can actually do: an action with nothing behind it is
-// shown disabled with the reason, never hidden and never left looking live.
+// The blue action is a waveform while the field is empty and a send arrow once
+// there is something to send, so the primary button always describes what it
+// will actually do.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
-  Brain,
+  Camera,
   Check,
+  FileText,
   FolderKanban,
   Globe,
   ImagePlus,
@@ -26,13 +30,13 @@ import {
   Sparkles,
   Square,
   X,
-  Zap,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
 import { useSettingsStore } from "@/lib/settings/store";
 import { composerPlaceholder } from "./composer-placeholder";
 
 export type ThinkMode = "fast" | "balanced" | "deep";
+export type VoiceState = "idle" | "listening" | "transcribing";
 
 export type ComposerAttachment = {
   name: string;
@@ -43,19 +47,14 @@ export type ComposerAttachment = {
 
 type Project = { id: string; name: string };
 
-export type VoiceState = "idle" | "listening" | "transcribing";
-
-const THINK_ICON: Record<ThinkMode, typeof Zap> = {
-  fast: Zap,
-  balanced: Brain,
-  deep: Sparkles,
-};
-
-const THINK_LABEL: Record<ThinkMode, string> = {
-  fast: "Fast",
-  balanced: "Balanced",
-  deep: "Deep think",
-};
+/** Five bars at the heights the reference shows, animated while listening. */
+function Waveform({ live = false }: { live?: boolean }) {
+  return (
+    <span className={`hx-wave ${live ? "hx-wave--live" : ""}`} aria-hidden>
+      <i /><i /><i /><i /><i />
+    </span>
+  );
+}
 
 export function Composer({
   value,
@@ -109,15 +108,18 @@ export function Composer({
   const [dropping, setDropping] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
 
-  const canSend = (value.trim().length > 0 || attachments.length > 0) && !isStreaming;
+  const hasContent = value.trim().length > 0 || attachments.length > 0;
+  const canSend = hasContent && !isStreaming;
   const sendOnEnter = settings.conversation.sendKey === "enter";
+  const listening = voiceState === "listening";
+  const transcribing = voiceState === "transcribing";
 
-  // Capability flags, read from the server rather than assumed.
   const features = meta?.features ?? {};
   const uploadsOn = features.fileUploads !== false;
   const imagesOn = features.imageAnalysis !== false;
@@ -127,16 +129,16 @@ export function Composer({
   const thinkModes = meta?.thinkModes ?? null;
 
   useEffect(() => {
-    if (autoFocus) textareaRef.current?.focus();
+    if (autoFocus) fieldRef.current?.focus();
   }, [autoFocus]);
 
-  // Grow with the content instead of scrolling inside one line, capped so a
-  // long paste does not swallow the conversation.
+  // Grow with the content. The shell's min-height holds the reference
+  // proportions until the text actually needs more room.
   useEffect(() => {
-    const el = textareaRef.current;
+    const el = fieldRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [value]);
 
   useEffect(() => {
@@ -167,14 +169,11 @@ export function Composer({
       .catch(() => setProjects([]));
   }, [menu]);
 
-  /* ---- Paste and drop -------------------------------------------------- */
-
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
       const files = Array.from(e.clipboardData.files);
       if (files.length === 0) return;
-      // A screenshot pasted into the composer should attach, not paste its
-      // filename as text.
+      // A pasted screenshot should attach, not drop its filename in as text.
       e.preventDefault();
       onAttach(files);
     },
@@ -182,18 +181,16 @@ export function Composer({
   );
 
   // Depth-counted: dragging over a child fires dragleave on the parent, so a
-  // naive boolean flickers the highlight off mid-drag.
+  // plain boolean flickers the highlight off mid-drag.
   const onDragEnter = (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes("Files")) return;
     dragDepth.current += 1;
     setDropping(true);
   };
-
   const onDragLeave = () => {
     dragDepth.current = Math.max(0, dragDepth.current - 1);
     if (dragDepth.current === 0) setDropping(false);
   };
-
   const onDrop = (e: React.DragEvent) => {
     if (!e.dataTransfer.files.length) return;
     e.preventDefault();
@@ -204,26 +201,35 @@ export function Composer({
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== "Enter") return;
-
     const wantsSend = sendOnEnter
       ? !e.shiftKey && !e.ctrlKey && !e.metaKey
       : e.ctrlKey || e.metaKey;
-
     if (wantsSend) {
       e.preventDefault();
       if (canSend) onSend();
     }
   }
 
-  const ThinkIcon = THINK_ICON[thinkMode];
-  const listening = voiceState === "listening";
-  const transcribing = voiceState === "transcribing";
+  /** Empty field: the blue button starts voice. With content: it sends. */
+  function primaryAction() {
+    if (isStreaming) return onStop();
+    if (canSend) return onSend();
+    if (micSupported) return onToggleVoice();
+  }
+
+  const primaryLabel = isStreaming
+    ? "Stop generating"
+    : canSend
+      ? "Send message"
+      : listening
+        ? "Stop listening"
+        : "Start voice input";
 
   return (
-    <div className="mx-auto w-full max-w-3xl" ref={rootRef}>
-      {/* ---- Attachment and context chips ---- */}
+    <div className="mx-auto w-full max-w-[820px]">
+      {/* ---- Context chips, above the pane ---- */}
       {(attachments.length > 0 || selectedProject || webSearchEnabled) && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <div className="mb-2.5 flex flex-wrap items-center gap-1.5 px-2">
           {selectedProject && (
             <Chip onRemove={() => onSelectProject(null)} label={`Remove ${selectedProject.name}`}>
               <FolderKanban size={12} />
@@ -254,260 +260,243 @@ export function Composer({
         </div>
       )}
 
-      {/* ---- Voice banner ---- */}
-      {(listening || transcribing) && (
-        <div className="mb-2 flex items-center gap-2.5 rounded-[var(--r-md)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 py-2 text-sm">
-          <span className="av-bars text-accent" aria-hidden>
-            <span /><span /><span />
-          </span>
-          <span className={transcribing ? "av-thinking" : ""}>
-            {transcribing ? "Transcribing…" : "Listening…"}
-          </span>
-          {interimTranscript && (
-            <span className="min-w-0 flex-1 truncate text-[var(--text-secondary)]">
-              {interimTranscript}
-            </span>
+      <div className="relative" ref={rootRef}>
+        {/* ---- Attachment menu, above the pane ---- */}
+        {menu === "add" && (
+          <div className="hx-menu" role="menu">
+            <MenuItem
+              icon={ImagePlus}
+              onClick={() => { imageRef.current?.click(); setMenu(null); }}
+              disabled={!uploadsOn || !imagesOn}
+              reason={
+                !imagesOn
+                  ? "Image analysis is off, so an image would be stored but not read."
+                  : undefined
+              }
+            >
+              Upload image
+            </MenuItem>
+            <MenuItem
+              icon={FileText}
+              onClick={() => { fileRef.current?.click(); setMenu(null); }}
+              disabled={!uploadsOn}
+              reason={!uploadsOn ? "Uploads are off for this server." : undefined}
+            >
+              Upload document
+            </MenuItem>
+            <MenuItem
+              icon={Camera}
+              onClick={() => { cameraRef.current?.click(); setMenu(null); }}
+              disabled={!uploadsOn || !imagesOn}
+            >
+              Take photo
+            </MenuItem>
+
+            {generationOn && (
+              <MenuItem icon={Sparkles} onClick={() => setMenu(null)}>
+                Create image
+              </MenuItem>
+            )}
+
+            {webSearchOn && (
+              <MenuItem
+                icon={Globe}
+                onClick={() => { onToggleWebSearch(); setMenu(null); }}
+                trailing={
+                  webSearchEnabled ? <Check size={15} className="text-[var(--bright-blue)]" /> : undefined
+                }
+              >
+                Search the web
+              </MenuItem>
+            )}
+
+            {showProjectPicker && projectsOn && (
+              <MenuItem icon={FolderKanban} onClick={() => setMenu("projects")}>
+                Add to a project
+              </MenuItem>
+            )}
+          </div>
+        )}
+
+        {menu === "projects" && (
+          <div className="hx-menu" role="menu">
+            <MenuItem icon={X} onClick={() => { onSelectProject(null); setMenu(null); }}>
+              No project
+            </MenuItem>
+            {projects.map((p) => (
+              <MenuItem
+                key={p.id}
+                icon={FolderKanban}
+                onClick={() => { onSelectProject(p); setMenu(null); }}
+                trailing={
+                  selectedProject?.id === p.id ? <Check size={15} className="text-[var(--bright-blue)]" /> : undefined
+                }
+              >
+                {p.name}
+              </MenuItem>
+            ))}
+            {projects.length === 0 && (
+              <p className="px-3.5 py-2.5 text-xs leading-relaxed text-[var(--text-secondary)]">
+                No projects yet. Create one from the sidebar to give Aviel a
+                workspace.
+              </p>
+            )}
+          </div>
+        )}
+
+        {menu === "think" && (
+          <div className="hx-menu" style={{ left: 62 }} role="menu">
+            {(["fast", "balanced", "deep"] as const).map((mode) => {
+              const note = thinkModes?.find((m) => m.mode === mode)?.note;
+              const label =
+                mode === "fast" ? "Fast" : mode === "deep" ? "Deep think" : "Balanced";
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={thinkMode === mode}
+                  onClick={() => { onThinkModeChange(mode); setMenu(null); }}
+                  className="hx-menu-item items-start"
+                >
+                  <Sparkles size={15} className="mt-0.5" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      {label}
+                      {thinkMode === mode && (
+                        <Check size={13} className="text-[var(--bright-blue)]" />
+                      )}
+                    </span>
+                    {note && (
+                      <span className="mt-0.5 block text-xs leading-relaxed text-[var(--text-secondary)]">
+                        {note}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ---- The pane ---- */}
+        <div
+          className="hx-composer"
+          data-dropping={dropping}
+          data-listening={listening || transcribing}
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+          onDrop={onDrop}
+        >
+          {(listening || transcribing) && (
+            <div className="hx-listening">
+              <span>{transcribing ? "Transcribing…" : "Listening…"}</span>
+              <span className="hx-listening-bars" aria-hidden>
+                {Array.from({ length: 28 }, (_, i) => (
+                  <i key={i} style={{ animationDelay: `${(i % 7) * 90}ms` }} />
+                ))}
+              </span>
+              <button
+                type="button"
+                onClick={onCancelVoice}
+                className="shrink-0 rounded-full px-2 py-1 text-xs text-[var(--composer-icon)] hover:text-[var(--composer-icon-hover)]"
+              >
+                Cancel
+              </button>
+            </div>
           )}
-          <button
-            type="button"
-            onClick={onCancelVoice}
-            className="av-btn av-btn--ghost ml-auto h-7 px-2 text-xs"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
 
-      {/* ---- The composer ---- */}
-      <div
-        className="av-composer px-2.5 pb-2 pt-2.5"
-        data-dropping={dropping}
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
-        onDrop={onDrop}
-      >
-        <label className="sr-only" htmlFor="composer-input">
-          Message Aviel
-        </label>
-        <textarea
-          id="composer-input"
-          ref={textareaRef}
-          value={value}
-          rows={1}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder={
-            dropping ? "Drop files to attach" : composerPlaceholder(settings)
-          }
-          className="max-h-[240px] overflow-y-auto px-1.5 py-1"
-        />
+          <label className="sr-only" htmlFor="composer-input">
+            Message Aviel
+          </label>
+          <textarea
+            id="composer-input"
+            ref={fieldRef}
+            className="hx-composer-field"
+            rows={1}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder={
+              dropping
+                ? "Drop files to attach"
+                : interimTranscript || composerPlaceholder(settings)
+            }
+          />
 
-        <div className="mt-1.5 flex items-center gap-1">
-          {/* ---- + menu ---- */}
-          <div className="relative">
+          {/* Bottom-left */}
+          <div className="hx-rail hx-rail--left">
             <button
               type="button"
               onClick={() => setMenu(menu === "add" || menu === "projects" ? null : "add")}
               aria-label="Add attachment or action"
               aria-expanded={menu === "add" || menu === "projects"}
               aria-haspopup="menu"
-              className="av-btn av-btn--ghost av-btn--round"
+              className="hx-icon-btn hx-icon-btn--plus"
             >
               <Plus
-                size={18}
-                className="transition-transform duration-200"
-                style={{ transform: menu === "add" ? "rotate(45deg)" : undefined }}
+                size={19}
+                style={{
+                  transform: menu === "add" ? "rotate(45deg)" : undefined,
+                  transition: "transform var(--t-base) var(--ease)",
+                }}
               />
             </button>
 
-            {menu === "add" && (
-              <div className="av-menu absolute bottom-full left-0 z-30 mb-2" role="menu">
-                <MenuItem
-                  icon={Paperclip}
-                  onClick={() => { fileRef.current?.click(); setMenu(null); }}
-                  disabled={!uploadsOn}
-                  reason={!uploadsOn ? "Uploads are turned off for this server." : undefined}
-                >
-                  Upload a file
-                </MenuItem>
-
-                <MenuItem
-                  icon={ImagePlus}
-                  onClick={() => { imageRef.current?.click(); setMenu(null); }}
-                  disabled={!uploadsOn || !imagesOn}
-                  reason={
-                    !imagesOn
-                      ? "Image analysis is turned off, so an image would be stored but not read."
-                      : undefined
-                  }
-                >
-                  Upload an image
-                </MenuItem>
-
-                {webSearchOn && (
-                  <MenuItem
-                    icon={Globe}
-                    onClick={() => { onToggleWebSearch(); setMenu(null); }}
-                    trailing={webSearchEnabled ? <Check size={14} className="text-accent" /> : undefined}
-                  >
-                    Search the web
-                  </MenuItem>
-                )}
-
-                {showProjectPicker && projectsOn && (
-                  <MenuItem icon={FolderKanban} onClick={() => setMenu("projects")}>
-                    Add to a project
-                  </MenuItem>
-                )}
-
-                {/* Shown only when a provider exists. Nothing generates images
-                    on this server, so listing it would be a dead entry. */}
-                {generationOn && (
-                  <MenuItem icon={Sparkles} onClick={() => setMenu(null)}>
-                    Generate an image
-                  </MenuItem>
-                )}
-
-                <div className="av-menu-sep" />
-                <p className="px-2.5 pb-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                  You can also paste an image, or drop files onto the composer.
-                </p>
-              </div>
-            )}
-
-            {menu === "projects" && (
-              <div className="av-menu absolute bottom-full left-0 z-30 mb-2" role="menu">
-                <p className="av-menu-label">Add to a project</p>
-                <MenuItem
-                  icon={X}
-                  onClick={() => { onSelectProject(null); setMenu(null); }}
-                >
-                  No project
-                </MenuItem>
-                {projects.map((p) => (
-                  <MenuItem
-                    key={p.id}
-                    icon={FolderKanban}
-                    onClick={() => { onSelectProject(p); setMenu(null); }}
-                    trailing={
-                      selectedProject?.id === p.id ? <Check size={14} className="text-accent" /> : undefined
-                    }
-                  >
-                    {p.name}
-                  </MenuItem>
-                ))}
-                {projects.length === 0 && (
-                  <p className="px-2.5 py-2 text-xs leading-relaxed text-[var(--text-secondary)]">
-                    No projects yet. Create one from the sidebar to give Aviel a
-                    workspace.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ---- Think ---- */}
-          <div className="relative">
             <button
               type="button"
               onClick={() => setMenu(menu === "think" ? null : "think")}
-              aria-label={`Thinking mode: ${THINK_LABEL[thinkMode]}`}
+              aria-label={`Thinking mode: ${thinkMode}`}
               aria-expanded={menu === "think"}
               aria-haspopup="menu"
-              className={`av-btn h-8 px-2.5 text-[13px] ${
-                thinkMode === "balanced" ? "av-btn--ghost" : "av-btn--default"
-              }`}
+              className="hx-icon-btn"
+              style={{
+                width: "auto",
+                paddingInline: 12,
+                fontSize: 13,
+                gap: 6,
+                color: thinkMode === "balanced" ? undefined : "var(--bright-blue)",
+              }}
             >
-              <ThinkIcon size={14} />
-              <span className="hidden sm:inline">{THINK_LABEL[thinkMode]}</span>
+              <Sparkles size={15} />
+              <span className="hidden sm:inline">
+                {thinkMode === "fast" ? "Fast" : thinkMode === "deep" ? "Deep" : "Think"}
+              </span>
             </button>
-
-            {menu === "think" && (
-              <div className="av-menu absolute bottom-full left-0 z-30 mb-2 w-72" role="menu">
-                <p className="av-menu-label">How much thought</p>
-                {(["fast", "balanced", "deep"] as const).map((mode) => {
-                  const Icon = THINK_ICON[mode];
-                  // The note comes from the server, computed for this account,
-                  // so Deep says plainly when no reasoning tier is answering.
-                  const note = thinkModes?.find((m) => m.mode === mode)?.note;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={thinkMode === mode}
-                      onClick={() => { onThinkModeChange(mode); setMenu(null); }}
-                      className="av-menu-item items-start"
-                    >
-                      <Icon size={15} className="mt-0.5" />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          {THINK_LABEL[mode]}
-                          {thinkMode === mode && (
-                            <Check size={13} className="text-accent" />
-                          )}
-                        </span>
-                        {note && (
-                          <span className="mt-0.5 block text-xs leading-relaxed text-[var(--text-secondary)]">
-                            {note}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
-          <div className="flex-1" />
+          {/* Bottom-right */}
+          <div className="hx-rail hx-rail--right">
+            {micSupported && settings.voice.dictationEnabled && (
+              <button
+                type="button"
+                onClick={onToggleVoice}
+                aria-label={listening ? "Stop listening" : "Dictate a message"}
+                aria-pressed={listening}
+                className="hx-icon-btn"
+              >
+                <Mic size={19} strokeWidth={1.75} />
+              </button>
+            )}
 
-          {/* ---- Microphone ---- */}
-          {micSupported && settings.voice.dictationEnabled && (
             <button
               type="button"
-              onClick={onToggleVoice}
-              aria-label={listening ? "Stop listening" : "Dictate a message"}
-              aria-pressed={listening}
-              className={`av-btn av-btn--round ${
-                listening ? "av-btn--default text-accent" : "av-btn--ghost"
-              }`}
+              onClick={primaryAction}
+              disabled={!isStreaming && !canSend && !micSupported}
+              aria-label={primaryLabel}
+              className={`hx-action ${isStreaming ? "hx-action--stop" : ""}`}
             >
-              {listening ? (
-                <span className="av-bars" aria-hidden>
-                  <span /><span /><span />
-                </span>
+              {isStreaming ? (
+                <Square size={15} fill="currentColor" />
+              ) : canSend ? (
+                <ArrowUp size={20} strokeWidth={2.4} />
               ) : (
-                <Mic size={17} />
+                <Waveform live={listening} />
               )}
             </button>
-          )}
-
-          {/* ---- Send / Stop ---- */}
-          {isStreaming ? (
-            <button
-              type="button"
-              onClick={onStop}
-              aria-label="Stop generating"
-              className="av-btn av-btn--round bg-[var(--text-primary)] text-[var(--bg-primary)]"
-            >
-              <Square size={14} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onSend}
-              disabled={!canSend}
-              aria-label="Send message"
-              className={`av-btn av-btn--round ${
-                canSend ? "av-btn--primary" : "av-btn--default"
-              }`}
-            >
-              <ArrowUp size={17} />
-            </button>
-          )}
+          </div>
         </div>
 
         <input
@@ -532,9 +521,23 @@ export function Composer({
             e.target.value = "";
           }}
         />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          // `capture` asks a phone for the camera directly. A desktop browser
+          // ignores it and shows the normal picker, which is the right
+          // fallback rather than a dead entry.
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.length) onAttach(e.target.files);
+            e.target.value = "";
+          }}
+        />
       </div>
 
-      <p className="mt-2 text-center text-[11px] text-[var(--text-secondary)]">
+      <p className="mt-2.5 text-center text-[11px] text-[var(--text-secondary)]">
         {sendOnEnter ? "Enter to send, Shift+Enter for a new line" : "Ctrl+Enter to send"}
         {" · "}
         Aviel can make mistakes. Check anything important.
@@ -555,7 +558,7 @@ function Chip({
   label: string;
 }) {
   return (
-    <span className="flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] py-1 pl-2.5 pr-1.5 text-xs">
+    <span className="flex items-center gap-1.5 rounded-full border border-[var(--composer-border)] bg-[var(--composer-bg)] py-1 pl-2.5 pr-1.5 text-xs backdrop-blur">
       {children}
       <button
         type="button"
@@ -581,7 +584,6 @@ function MenuItem({
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  /** Why it is unavailable. Shown under the label rather than as a tooltip. */
   reason?: string;
   trailing?: React.ReactNode;
 }) {
@@ -591,9 +593,9 @@ function MenuItem({
       role="menuitem"
       onClick={onClick}
       disabled={disabled}
-      className="av-menu-item items-start"
+      className="hx-menu-item items-start"
     >
-      <Icon size={15} className="mt-0.5" />
+      <Icon size={17} strokeWidth={1.75} className="mt-0.5" />
       <span className="min-w-0 flex-1">
         {children}
         {reason && (

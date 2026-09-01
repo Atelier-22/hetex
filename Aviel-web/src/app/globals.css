@@ -839,3 +839,386 @@ html[data-bubble="minimal"] .chat-bubble--user {
 
 /* Every animation above is decorative. The reduce-motion rules elsewhere in
    this file already neutralise them, and data-animations="off" does too. */
+
+/* ==========================================================================
+   Composer — liquid glass
+   ==========================================================================
+
+   The reference is a dark-glass design: rgba(255,255,255,0.08) over a deep
+   atmospheric ground. Those values are used verbatim in dark, which is the
+   theme the reference was drawn for.
+
+   Light needs the inverse, not the same numbers — white-on-white glass is
+   invisible. The light values are the same idea (a translucent pane lifted off
+   the ground) expressed the only way it can be on a pale surface: a dark tint
+   at low opacity with a firmer border. */
+
+:root {
+  /* Reference palette, fixed across themes because they are brand values. */
+  --void: #0b0e14;
+  --navy: #07142f;
+  --electric-blue: #007aff;
+  --bright-blue: #2f80ff;
+  --brand-orange: #ff6b00;
+  --bright-orange: #ff7a18;
+
+  /* Light-theme glass. */
+  --composer-bg: rgba(11, 21, 18, 0.04);
+  --composer-bg-focus: rgba(11, 21, 18, 0.055);
+  --composer-border: rgba(11, 21, 18, 0.12);
+  --composer-border-focus: rgba(47, 128, 255, 0.5);
+  --composer-blur: 24px;
+  --composer-text: rgba(11, 21, 18, 0.92);
+  --composer-placeholder: rgba(11, 21, 18, 0.45);
+  --composer-icon: rgba(11, 21, 18, 0.7);
+  --composer-icon-hover: rgba(11, 21, 18, 0.95);
+  --composer-shadow: 0 8px 32px -12px rgba(11, 21, 18, 0.18);
+}
+
+.dark {
+  /* The reference values, exactly. */
+  --composer-bg: rgba(255, 255, 255, 0.08);
+  --composer-bg-focus: rgba(255, 255, 255, 0.1);
+  --composer-border: rgba(255, 255, 255, 0.15);
+  --composer-border-focus: rgba(47, 128, 255, 0.55);
+  --composer-text: rgba(255, 255, 255, 0.95);
+  --composer-placeholder: rgba(255, 255, 255, 0.65);
+  --composer-icon: rgba(255, 255, 255, 0.75);
+  --composer-icon-hover: rgba(255, 255, 255, 1);
+  --composer-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.55);
+}
+
+/* --- The shell -----------------------------------------------------------
+   Relative-positioned, with the controls absolutely placed against its
+   corners. That is what keeps the text at the top-left independent of how
+   tall the field grows, rather than everything drifting as a flex row. */
+
+.hx-composer {
+  position: relative;
+  width: 100%;
+  max-width: 820px;
+  min-height: 116px;
+  margin: 0 auto;
+  border-radius: 36px;
+  background-color: var(--composer-bg);
+  border: 1px solid var(--composer-border);
+  backdrop-filter: blur(var(--composer-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--composer-blur)) saturate(150%);
+  box-shadow: var(--composer-shadow);
+  transition:
+    border-color var(--t-base) var(--ease),
+    background-color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease);
+}
+
+.hx-composer:focus-within {
+  background-color: var(--composer-bg-focus);
+  border-color: var(--composer-border-focus);
+}
+
+.hx-composer[data-dropping="true"] {
+  border-color: var(--bright-blue);
+  background-color: color-mix(in srgb, var(--bright-blue) 12%, transparent);
+}
+
+/* --- The field -----------------------------------------------------------
+   Top-left, per the reference: 22px in from both edges. The right padding
+   clears nothing at this height because the controls sit on the row below —
+   the bottom padding is what reserves that space. */
+
+.hx-composer-field {
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--composer-text);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 22px 24px 56px 24px;
+  max-height: 220px;
+  overflow-y: auto;
+  /* iOS Safari zooms a focused input whose text is under 16px and never zooms
+     back out. 20px is comfortably clear of that. */
+}
+
+.hx-composer-field::placeholder {
+  color: var(--composer-placeholder);
+  font-weight: 400;
+}
+
+/* --- Control rails -------------------------------------------------------
+   Absolutely positioned against the composer's own corners, so growing the
+   textarea moves nothing. */
+
+.hx-rail {
+  position: absolute;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hx-rail--left {
+  left: 20px;
+}
+
+.hx-rail--right {
+  right: 20px;
+  gap: 10px;
+}
+
+/* --- Icon buttons -------------------------------------------------------- */
+
+.hx-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--composer-icon);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.hx-icon-btn:hover:not(:disabled) {
+  background-color: var(--surface-hover);
+  color: var(--composer-icon-hover);
+}
+
+.hx-icon-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.hx-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.hx-icon-btn[aria-pressed="true"] {
+  color: var(--bright-blue);
+}
+
+/* The plus gets a soft ring so it reads as the primary affordance on the
+   left, matching the reference's slightly heavier treatment of it. */
+.hx-icon-btn--plus {
+  background-color: var(--composer-bg-focus);
+  border: 1px solid var(--composer-border);
+}
+
+/* --- The blue action button ---------------------------------------------
+   48px, circular, fixed brand blue in both themes. It is an action colour,
+   not a surface, so it does not follow the accent preference. */
+
+.hx-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 0;
+  background-color: var(--bright-blue);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 14px -4px rgba(47, 128, 255, 0.6);
+  transition:
+    background-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
+}
+
+.hx-action:hover:not(:disabled) {
+  background-color: var(--electric-blue);
+}
+
+.hx-action:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.hx-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Streaming: the same circle, restated as a stop. */
+.hx-action--stop {
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
+  box-shadow: none;
+}
+
+/* --- Waveform ------------------------------------------------------------
+   Drawn as bars rather than an icon glyph so it can animate while listening
+   without swapping the element. */
+
+.hx-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+}
+
+.hx-wave i {
+  display: block;
+  width: 2.5px;
+  border-radius: 999px;
+  background-color: currentColor;
+  height: 100%;
+  transform-origin: center;
+}
+
+/* Resting shape: the varying heights the reference shows. */
+.hx-wave i:nth-child(1) { transform: scaleY(0.35); }
+.hx-wave i:nth-child(2) { transform: scaleY(0.7); }
+.hx-wave i:nth-child(3) { transform: scaleY(1); }
+.hx-wave i:nth-child(4) { transform: scaleY(0.55); }
+.hx-wave i:nth-child(5) { transform: scaleY(0.28); }
+
+.hx-wave--live i {
+  animation: hx-wave 900ms var(--ease) infinite;
+}
+.hx-wave--live i:nth-child(2) { animation-delay: 120ms; }
+.hx-wave--live i:nth-child(3) { animation-delay: 240ms; }
+.hx-wave--live i:nth-child(4) { animation-delay: 360ms; }
+.hx-wave--live i:nth-child(5) { animation-delay: 80ms; }
+
+@keyframes hx-wave {
+  0%, 100% { transform: scaleY(0.25); }
+  50%      { transform: scaleY(1); }
+}
+
+/* --- Listening state -----------------------------------------------------
+   The composer reacts rather than being replaced: a blue-to-orange bar sits
+   above the field and the border picks up the same blue. */
+
+.hx-composer[data-listening="true"] {
+  border-color: var(--bright-blue);
+}
+
+.hx-listening {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px 0;
+  font-size: 13px;
+  color: var(--composer-placeholder);
+}
+
+.hx-listening-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.hx-listening-bars i {
+  display: block;
+  flex: 1;
+  max-width: 3px;
+  border-radius: 999px;
+  height: 100%;
+  background-image: linear-gradient(
+    to bottom,
+    var(--bright-blue),
+    var(--bright-orange)
+  );
+  animation: hx-wave 1s var(--ease) infinite;
+}
+
+/* --- Attachment menu -----------------------------------------------------
+   Opens above the composer, glass to match it. */
+
+.hx-menu {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  z-index: 40;
+  min-width: 260px;
+  padding: 8px;
+  border-radius: 22px;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--composer-border);
+  backdrop-filter: blur(var(--composer-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--composer-blur)) saturate(150%);
+  box-shadow: var(--e-3);
+  animation: hx-menu-in var(--t-base) var(--ease);
+  transform-origin: bottom left;
+}
+
+@keyframes hx-menu-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+.hx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+
+.hx-menu-item:hover:not(:disabled) {
+  background-color: var(--surface-hover);
+}
+
+.hx-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hx-menu-item svg {
+  flex: none;
+  color: var(--composer-icon);
+}
+
+/* --- Responsive ----------------------------------------------------------
+   The reference's proportions are desktop. On a phone the same composer at
+   the same height wastes a third of the visible area above the keyboard, so
+   it tightens rather than scaling down uniformly. */
+
+@media (max-width: 1024px) {
+  .hx-composer {
+    max-width: 90%;
+  }
+}
+
+@media (max-width: 640px) {
+  .hx-composer {
+    max-width: none;
+    width: calc(100% - 24px);
+    min-height: 104px;
+    border-radius: 30px;
+  }
+
+  .hx-composer-field {
+    font-size: 17px;
+    padding: 18px 18px 52px 18px;
+  }
+
+  .hx-rail { bottom: 14px; }
+  .hx-rail--left { left: 16px; }
+  .hx-rail--right { right: 16px; gap: 6px; }
+
+  .hx-action { width: 44px; height: 44px; }
+  .hx-menu { min-width: 0; width: calc(100vw - 48px); }
+}

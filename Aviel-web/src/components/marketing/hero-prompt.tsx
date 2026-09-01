@@ -86,53 +86,59 @@ export function HeroPrompt() {
         e.preventDefault();
         go();
       }}
-      className="focus-within-accent flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-secondary)] py-2 pl-2 pr-2 shadow-sm sm:gap-2 sm:pl-3"
+      // The same glass shell as the signed-in composer, so the landing page is
+      // showing the real thing rather than a lookalike. It cannot send — a
+      // logged-out visitor has nowhere to send to — so the primary button
+      // carries the visitor and their text through to registration.
+      className="hx-composer"
     >
-      <button
-        type="button"
-        onClick={() => router.push("/register")}
-        aria-label="Sign up to attach files"
-        title="Attach files — sign up to use"
-        className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition-colors hover:bg-black/5 sm:flex dark:hover:bg-white/10"
-      >
-        <Plus size={18} />
-      </button>
-
       <label className="sr-only" htmlFor="hero-prompt">
-        Ask Aviel AI anything
+        Ask Aviel anything
       </label>
-      <input
+      <textarea
         id="hero-prompt"
+        rows={1}
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            go();
+          }
+        }}
         placeholder={EXAMPLES[example]}
-        // 16px: below that, iOS Safari zooms the page in on focus.
-        className="w-full min-w-0 bg-transparent px-2 py-2 text-base outline-none placeholder:text-[var(--text-secondary)]"
+        className="hx-composer-field"
       />
 
-      {micSupported && (
+      <div className="hx-rail hx-rail--left">
         <button
           type="button"
-          onClick={toggleMic}
-          aria-label={listening ? "Stop dictating" : "Dictate"}
-          title={listening ? "Listening…" : "Speak instead of typing"}
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-            listening
-              ? "animate-pulse text-Aviel-red-500"
-              : "text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
-          }`}
+          onClick={() => router.push("/register")}
+          aria-label="Sign up to attach files"
+          title="Attach files — sign up to use"
+          className="hx-icon-btn hx-icon-btn--plus"
         >
-          {listening ? <MicOff size={17} /> : <Mic size={17} />}
+          <Plus size={19} />
         </button>
-      )}
+      </div>
 
-      <button
-        type="submit"
-        aria-label="Continue"
-        className="bg-accent-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-opacity hover:opacity-90"
-      >
-        <ArrowUp size={17} />
-      </button>
+      <div className="hx-rail hx-rail--right">
+        {micSupported && (
+          <button
+            type="button"
+            onClick={toggleMic}
+            aria-label={listening ? "Stop dictating" : "Dictate"}
+            aria-pressed={listening}
+            className="hx-icon-btn"
+          >
+            {listening ? <MicOff size={19} strokeWidth={1.75} /> : <Mic size={19} strokeWidth={1.75} />}
+          </button>
+        )}
+
+        <button type="submit" aria-label="Continue" className="hx-action">
+          <ArrowUp size={20} strokeWidth={2.4} />
+        </button>
+      </div>
     </form>
   );
 }

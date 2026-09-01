@@ -551,11 +551,6 @@ export function Composer({
         />
       </div>
 
-      <p className="mt-2.5 text-center text-[11px] text-[var(--text-secondary)]">
-        {sendOnEnter ? "Enter to send, Shift+Enter for a new line" : "Ctrl+Enter to send"}
-        {" · "}
-        Aviel can make mistakes. Check anything important.
-      </p>
     </div>
   );
 }

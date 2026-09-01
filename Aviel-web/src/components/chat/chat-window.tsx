@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
-  BrainCircuit,
   Cloud,
   FileText,
   Globe,
@@ -90,7 +89,6 @@ export function ChatWindow({
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [excludeFromMemory, setExcludeFromMemory] = useState(false);
   const [turnMeta, setTurnMeta] = useState<{
     model?: string;
     processedLocally?: boolean;
@@ -303,7 +301,10 @@ export function ChatWindow({
         base64: f.base64,
       })),
       webSearchEnabled: useWebSearch,
-      excludeFromMemory,
+      // Deliberately not sent. The server keeps this flag per conversation and
+      // falls back to the stored value when the client omits it, so omitting it
+      // leaves the conversation's own setting alone rather than overwriting it
+      // with a default on every turn.
       // Per-message, so choosing Deep for one hard question does not change
       // the account's standing preference.
       thinkMode,
@@ -569,19 +570,23 @@ export function ChatWindow({
     router.refresh();
   }
 
-  const sendOnEnter = conv.sendKey === "enter";
   const showProcessing =
     settings.privacy.showProcessingLocation && turnMeta !== null;
+  const showUsage = conv.showUsage && messages.length > 0;
+  // Everything the bar can hold needs a conversation that has started, so this
+  // is the one condition rather than three ORed together.
+  const showHeader = messages.length > 0;
 
   return (
     <div className="flex h-full flex-col">
+      {/* The bar carries only what the conversation earns: a usage count if it
+          is switched on, where the answer was processed, and a way to delete.
+          It is not rendered at all when it would hold none of those, so a new
+          chat opens on the conversation rather than on a strip of chrome. */}
+      {showHeader && (
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5 md:px-8">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-[var(--text-secondary)]">
-            {messages.length > 0 ? `${messages.length} messages` : "New chat"}
-          </span>
-
-          {conv.showUsage && messages.length > 0 && (
+          {showUsage && (
             <span className="text-xs text-[var(--text-secondary)]">
               ·{" "}
               {messages
@@ -614,26 +619,6 @@ export function ChatWindow({
         </div>
 
         <div className="flex items-center gap-1">
-          {settings.memory.enabled && (
-            <button
-              onClick={() => setExcludeFromMemory((v) => !v)}
-              aria-pressed={excludeFromMemory}
-              title={
-                excludeFromMemory
-                  ? "Nothing from this conversation will be remembered"
-                  : "Don't remember this conversation"
-              }
-              className={`focus-ring flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${
-                excludeFromMemory
-                  ? "bg-accent-soft"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
-              }`}
-            >
-              <BrainCircuit size={13} />
-              {excludeFromMemory ? "Not remembered" : "Remember"}
-            </button>
-          )}
-
           {messages.length > 0 && (
             <button
               onClick={clearConversation}
@@ -644,6 +629,7 @@ export function ChatWindow({
           )}
         </div>
       </div>
+      )}
 
       <div
         ref={scrollContainerRef}
